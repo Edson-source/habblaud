@@ -1,6 +1,7 @@
 // Barra lateral: busca, filtro por conta e a lista de salas -> agentes -> subagentes.
 import type { AccountInfo, AgentInfo } from '../../../shared/types';
 import { deriveExternalAgentPresence, externalAgentCardDetails, externalAgentName, type ExternalAgentPresence } from '../world/external-agents';
+import { HOMELAB_ROOM_ID } from '../world/homelab-room';
 import { roomTheme } from '../art';
 import type { UiComponent, UiContext } from './context';
 import { moveAgent, orderAgents } from './agentorder';
@@ -14,7 +15,7 @@ import { createAgentRow, updateAgentRow } from './rows';
 import { createAccountChip, createProgress, updateAccountChip, updateProgress } from './widgets';
 import { tr } from '../../../shared/i18n';
 import { externalAgentStatusLabel } from './external-agents';
-import { formatElapsed, relativeTime } from './format';
+import { formatElapsed } from './format';
 import { externalAvatarImage } from './avatar';
 
 interface RoomRefs {
@@ -40,6 +41,24 @@ interface NodeRefs {
   subs: KeyedList<AgentInfo>;
 }
 
+interface ExternalRoomRefs {
+  name: HTMLElement;
+  count: HTMLElement;
+  path: HTMLElement;
+  tasks: HTMLElement;
+  tasksBar: HTMLElement;
+  tasksText: HTMLElement;
+}
+
+interface ExternalAgentRefs {
+  row: HTMLButtonElement;
+  name: HTMLElement;
+  order: HTMLElement;
+  actionIcon: HTMLElement;
+  action: HTMLElement;
+  time: HTMLElement;
+}
+
 export class Sidebar implements UiComponent {
   readonly el: HTMLElement;
   private input: HTMLInputElement;
@@ -48,9 +67,10 @@ export class Sidebar implements UiComponent {
   private filterList: KeyedList<AccountInfo, HTMLButtonElement>;
   private scroller: HTMLElement;
   private rooms: KeyedList<RoomGroup>;
-  private externalSection: HTMLElement;
-  private externalCount: HTMLElement;
-  private externalRoster: KeyedList<ExternalAgentPresence, HTMLButtonElement>;
+  private externalRoom: HTMLElement;
+  private externalRoomRefs: ExternalRoomRefs;
+  private externalRoster: KeyedList<ExternalAgentPresence, HTMLLIElement>;
+  private externalAgentRefs = new WeakMap<HTMLElement, ExternalAgentRefs>();
   private roomRefs = new WeakMap<HTMLElement, RoomRefs>();
   private nodeRefs = new WeakMap<HTMLElement, NodeRefs>();
   /** Agentes de cada sala na ordem mostrada (para arrastar e soltar). */
@@ -118,20 +138,35 @@ export class Sidebar implements UiComponent {
       create: (g) => this.createRoom(g),
       update: (el, g) => this.updateRoom(el, g),
     });
-    const externalList = h('div', { class: 'ui-ext-roster__list', role: 'list' });
-    this.externalRoster = new KeyedList<ExternalAgentPresence, HTMLButtonElement>(externalList, {
+    const externalList = h('ul', { class: 'ui-nodes', role: 'list' });
+    this.externalRoster = new KeyedList<ExternalAgentPresence, HTMLLIElement>(externalList, {
       key: (presence) => presence.agent,
       create: (presence) => this.createExternalAgent(presence),
-      update: (button, presence) => this.updateExternalAgent(button, presence),
+      update: (item, presence) => this.updateExternalAgent(item, presence),
     });
-    this.externalCount = h('span', { class: 'ui-room__count', text: '3' });
-    this.externalSection = h(
-      'section',
-      { class: 'ui-ext-roster', attrs: { 'aria-label': tr('Agentes integrados') } },
-      h('div', { class: 'ui-ext-roster__head' }, h('h3', { text: tr('Agentes integrados') }), this.externalCount),
-      externalList,
+    const externalName = h('span', { class: 'ui-room__name', text: 'homelab' });
+    const externalCount = h('span', { class: 'ui-room__count', text: '0' });
+    const externalPath = h('span', { class: 'ui-room__path', text: '~/homelab/' });
+    const externalTasksBar = createProgress(tr('Progresso das tarefas da sala'));
+    const externalTasksText = h('span', { class: 'ui-room__tasks-text' });
+    const externalTasks = h('span', { class: 'ui-room__tasks' }, externalTasksBar, externalTasksText);
+    const externalSwatch = h('span', { class: 'ui-room__swatch', attrs: { 'aria-hidden': 'true' } });
+    const externalHead = h(
+      'button',
+      { class: 'ui-room__head', type: 'button', attrs: { 'aria-label': tr('Salas') } },
+      externalSwatch,
+      h('span', { class: 'ui-room__line' }, externalName, externalCount),
+      externalPath,
+      externalTasks,
     );
-    this.scroller.append(this.externalSection);
+    externalHead.addEventListener('click', () => this.ctx.select({ type: 'room', id: HOMELAB_ROOM_ID }, { focus: true }));
+    this.externalRoom = h('section', { class: 'ui-room', role: 'listitem', attrs: { 'data-key': HOMELAB_ROOM_ID } }, externalHead, externalList);
+    this.externalRoomRefs = { name: externalName, count: externalCount, path: externalPath, tasks: externalTasks, tasksBar: externalTasksBar, tasksText: externalTasksText };
+    try {
+      setStyleVar(externalHead, '--room', '#f0a24a');
+    } catch {
+      // Sem tema: mantém a cor padrão do CSS.
+    }
 
     this.emptyText = h('p');
     this.clearBtn = h('button', {
@@ -178,11 +213,12 @@ export class Sidebar implements UiComponent {
     const externalAgents = deriveExternalAgentPresence(this.ctx.store.agentEvents).filter((presence) => {
       if (!query) return true;
       const details = externalAgentCardDetails(this.ctx.store.agentEvents, presence, this.ctx.now());
-      return normalizeSearch(`${externalAgentName(presence.agent)} ${externalAgentStatusLabel(presence.status)} ${details.order} ${details.action}`).includes(query);
+      return normalizeSearch(`${externalAgentName(presence.agent)} ${externalAgentStatusLabel(presence.status)} ${details.projectPath} ${details.order} ${details.action}`).includes(query);
     });
     this.externalRoster.sync(externalAgents);
-    setText(this.externalCount, String(externalAgents.length));
-    setHidden(this.externalSection, externalAgents.length === 0);
+    this.updateExternalRoom(externalAgents);
+    setHidden(this.externalRoom, externalAgents.length === 0);
+    this.rooms.container.append(this.externalRoom);
 
     const filtering = this.query.trim().length > 0 || hidden.size > 0;
     const total = snap?.agents.length ?? 0;
@@ -224,56 +260,97 @@ export class Sidebar implements UiComponent {
     this.ctx.updatePrefs({ hiddenAccounts: [...set] });
   }
 
-  private createExternalAgent(presence: ExternalAgentPresence): HTMLButtonElement {
-    const avatar = h('span', { class: 'ui-ext-roster__avatar', attrs: { 'aria-hidden': 'true' } }, externalAvatarImage(presence.agent, 2));
-    const name = h('span', { class: 'ui-ext-roster__name' });
-    const project = h('span', { class: 'ui-ext-roster__room', text: '~/homelab/' });
-    const order = h('span', { class: 'ui-ext-roster__order' });
-    const status = h('span', { class: 'ui-ext-roster__status' });
-    const time = h('time', { class: 'ui-ext-roster__time' });
-    const statusLine = h('span', { class: 'ui-ext-roster__status-line' }, status, time);
-    const progress = h('span', { class: 'ui-ext-roster__progress', attrs: { 'aria-hidden': 'true' } }, h('span', { class: 'ui-ext-roster__progress-fill' }));
-    const button = h('button', { class: 'ui-ext-roster__agent', type: 'button', attrs: { role: 'listitem', 'data-agent': presence.agent } }, avatar, h('span', { class: 'ui-ext-roster__details' }, name, project, order, statusLine, progress));
+  private createExternalAgent(presence: ExternalAgentPresence): HTMLLIElement {
+    const avatar = h('span', { class: 'ui-avatar ui-avatar--md ui-ext-roster__avatar', attrs: { 'aria-hidden': 'true' } }, externalAvatarImage(presence.agent, 3));
+    const name = h('span', { class: 'ui-agent__name' });
+    const role = h('span', { class: 'ui-role', text: tr('Agente integrado') });
+    const order = h('span', { class: 'ui-agent__task', hidden: true });
+    const actionIcon = h('span', { class: 'ui-activity__icon', attrs: { 'aria-hidden': 'true' } });
+    const actionText = h('span', { class: 'ui-activity__text' });
+    const time = h('time', { class: 'ui-activity__time', hidden: true });
+    const activity = h('span', { class: 'ui-activity' }, actionIcon, actionText, time);
+    const button = h(
+      'button',
+      { class: 'ui-agent ui-ext-roster__agent', type: 'button', attrs: { 'data-agent': presence.agent, 'aria-pressed': 'false' } },
+      avatar,
+      h('span', { class: 'ui-agent__main' }, h('span', { class: 'ui-agent__top' }, name, role), order, activity),
+      h('span', { class: 'ui-ext-roster__indicator', attrs: { 'aria-hidden': 'true' } }),
+    );
     button.addEventListener('click', () => this.ctx.select({ type: 'agent', id: `external:${presence.agent}` }, { focus: true }));
-    return button;
+    const head = h('div', { class: 'ui-node__head' }, button);
+    const item = h('li', { class: 'ui-node' }, head);
+    this.externalAgentRefs.set(item, { row: button, name, order, actionIcon, action: actionText, time });
+    return item;
   }
 
-  private updateExternalAgent(button: HTMLButtonElement, presence: ExternalAgentPresence): void {
+  private updateExternalAgent(item: HTMLLIElement, presence: ExternalAgentPresence): void {
+    const refs = this.externalAgentRefs.get(item)!;
+    const button = refs.row;
     const name = externalAgentName(presence.agent);
     const status = externalAgentStatusLabel(presence.status);
     const details = externalAgentCardDetails(this.ctx.store.agentEvents, presence, this.ctx.now());
     const active = ['receiving', 'routing', 'routed', 'waiting', 'waiting_shell', 'needs_help', 'working'].includes(presence.status);
-    const at = presence.lastEvent ? Date.parse(presence.lastEvent.occurred_at) : NaN;
-    const time = button.querySelector('time')!;
-    setText(button.querySelector('.ui-ext-roster__name')!, name);
-    setText(button.querySelector('.ui-ext-roster__room')!, details.projectPath);
-    const order = button.querySelector<HTMLElement>('.ui-ext-roster__order')!;
-    setText(order, details.order ? `📨 ${details.order}` : '');
-    setTitle(order, details.order);
-    setHidden(order, !details.order);
+    const time = refs.time;
+    setText(refs.name, name);
+    button.dataset.agent = presence.agent;
+    setText(refs.order, details.order);
+    setHidden(refs.order, !details.order);
+    setTitle(refs.order, details.order);
     const actionText = details.action || status;
-    const action = button.querySelector<HTMLElement>('.ui-ext-roster__status')!;
-    setText(action, `${details.action ? details.actionIcon : '💬'} ${actionText}`);
+    const action = refs.action;
+    setText(refs.actionIcon, details.action ? details.actionIcon : '💬');
+    setText(action, actionText);
     setTitle(action, actionText);
     const finished = ['completed', 'failed', 'delivered', 'delivery_failed'].includes(presence.status);
     const elapsed = details.elapsedMs;
     setText(time, elapsed !== undefined
       ? finished ? tr('Levou {0}', [formatElapsed(elapsed)]) : formatElapsed(elapsed)
-      : Number.isFinite(at) ? relativeTime(at, this.ctx.now()) : '');
-    setHidden(time, elapsed === undefined && !Number.isFinite(at));
+      : '');
+    setHidden(time, elapsed === undefined);
     setAttr(time, 'datetime', presence.lastEvent?.occurred_at ?? '');
     setTitle(time, elapsed !== undefined
       ? finished ? tr('Tempo até a conclusão: {0}', [formatElapsed(elapsed)]) : tr('Tempo em andamento: {0}', [formatElapsed(elapsed)])
-      : Number.isFinite(at) ? tr('Último evento: {0}', [relativeTime(at, this.ctx.now())]) : '');
-    const label = `${name} · ${details.projectPath}${details.order ? ` · ${details.order}` : ''} · ${actionText}${elapsed !== undefined ? ` · ${formatElapsed(elapsed)}` : ''}`;
+      : '');
+    const label = `${name}${details.order ? ` · ${details.order}` : ''} · ${actionText}${elapsed !== undefined ? ` · ${formatElapsed(elapsed)}` : ''}`;
     setAttr(button, 'aria-label', label);
     setTitle(button, label);
     const selected = this.ctx.selection();
     const isSelected = selected?.type === 'agent' && selected.id === `external:${presence.agent}`;
     setAttr(button, 'aria-pressed', String(isSelected));
     button.classList.toggle('is-selected', isSelected);
-    setHidden(button.querySelector('.ui-ext-roster__progress')!, !active);
     button.dataset.status = presence.status;
+    button.classList.toggle('is-waiting', ['waiting', 'waiting_shell', 'routed'].includes(presence.status));
+    button.classList.toggle('is-done', finished);
+    button.classList.toggle('is-offline', presence.status === 'unknown');
+    const indicator = button.lastElementChild as HTMLElement;
+    indicator.dataset.status = presence.status;
+    setTitle(indicator, status);
+    setHidden(indicator, !active && presence.status !== 'failed' && presence.status !== 'delivery_failed');
+  }
+
+  private updateExternalRoom(presences: readonly ExternalAgentPresence[]): void {
+    const r = this.externalRoomRefs;
+    const count = presences.length;
+    setText(r.count, String(count));
+    setTitle(r.count, plural(count, tr('agente'), tr('agentes')));
+    setAttr(this.externalRoom.firstElementChild as HTMLElement, 'aria-label', tr('Sala {0}, {1}', ['homelab', plural(count, tr('agente'), tr('agentes'))]));
+    const allEvents = this.ctx.store.agentEvents;
+    const requests = new Map<string, { started: boolean; completed: boolean }>();
+    for (const event of allEvents) {
+      let request = requests.get(event.request_id);
+      if (!request) requests.set(event.request_id, (request = { started: false, completed: false }));
+      if (event.type === 'agent_started') request.started = true;
+      if (event.type === 'agent_completed' || event.type === 'response_delivered') request.completed = true;
+    }
+    const total = requests.size;
+    const completed = [...requests.values()].filter((request) => request.completed).length;
+    const inProgress = [...requests.values()].filter((request) => request.started && !request.completed).length;
+    setHidden(r.tasks, total === 0);
+    if (total > 0) {
+      updateProgress(r.tasksBar, completed, total, Math.min(total - completed, inProgress * 0.45));
+      setText(r.tasksText, tr('{0}/{1} tarefas', [completed, total]));
+    }
+    setHidden(r.tasksText, total === 0);
   }
 
   // ---------------------------------------------------------------- salas

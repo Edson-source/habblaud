@@ -1630,49 +1630,8 @@
   color: var(--ui-faint);
 }
 
-.ui-ext-roster {
-  margin-top: 10px;
-  padding: 8px 7px 6px;
-  border: 1px solid var(--ui-line);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.018);
-}
-
-.ui-ext-roster__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 0 3px 6px;
-}
-
-.ui-ext-roster__head h3 {
-  color: var(--ui-muted);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.ui-ext-roster__list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .ui-ext-roster__agent {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px 9px;
-  width: 100%;
-  padding: 6px 7px;
-  border-radius: 7px;
   text-align: left;
-  transition: background-color 0.15s;
-}
-
-.ui-ext-roster__agent:hover,
-.ui-ext-roster__agent.is-selected {
-  background: var(--ui-bg-hover);
 }
 
 .ui-ext-roster__avatar {
@@ -1699,99 +1658,48 @@
   object-position: center bottom;
 }
 
-.ui-ext-roster__details {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 3px;
-}
-
-.ui-ext-roster__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.ui-ext-roster__room {
-  overflow: hidden;
-  color: var(--ui-accent);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ui-ext-roster__order {
-  overflow: hidden;
-  color: var(--ui-text);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ui-ext-roster__order[hidden] {
-  display: none;
-}
-
-.ui-ext-roster__status-line {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-}
-
-.ui-ext-roster__status {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ui-faint);
-  font-size: 10.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ui-ext-roster__time {
+.ui-ext-roster__indicator {
+  width: 7px;
+  height: 7px;
   flex: none;
-  margin-left: auto;
-  color: var(--ui-muted);
-  font: 10px var(--font-mono);
-  font-variant-numeric: tabular-nums;
+  border-radius: 50%;
+  background: var(--ui-faint);
 }
 
-.ui-ext-roster__progress {
-  position: relative;
-  display: block;
-  height: 4px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(160, 176, 210, 0.13);
-}
-
-.ui-ext-roster__progress[hidden] {
-  display: none;
-}
-
-.ui-ext-roster__progress-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 34%;
-  border-radius: inherit;
+.ui-ext-roster__agent[data-status='receiving'] .ui-ext-roster__indicator,
+.ui-ext-roster__agent[data-status='routing'] .ui-ext-roster__indicator,
+.ui-ext-roster__agent[data-status='working'] .ui-ext-roster__indicator {
   background: var(--st-working);
-  animation: ui-ext-progress 1.8s ease-in-out infinite;
+  box-shadow: 0 0 7px var(--st-working);
+  animation: ui-pulse-dot 1.4s ease-in-out infinite;
 }
 
-@keyframes ui-ext-progress {
-  0% { transform: translateX(-110%); }
-  100% { transform: translateX(320%); }
+.ui-ext-roster__agent[data-status='waiting'] .ui-ext-roster__indicator,
+.ui-ext-roster__agent[data-status='routed'] .ui-ext-roster__indicator,
+.ui-ext-roster__agent[data-status='waiting_shell'] .ui-ext-roster__indicator {
+  background: var(--st-waiting);
 }
 
-.ui-ext-roster__agent[data-status='working'] .ui-ext-roster__status {
+.ui-ext-roster__agent[data-status='needs_help'] .ui-ext-roster__indicator,
+.ui-ext-roster__agent[data-status='failed'] .ui-ext-roster__indicator,
+.ui-ext-roster__agent[data-status='dispatch_uncertain'] .ui-ext-roster__indicator,
+.ui-ext-roster__agent[data-status='delivery_failed'] .ui-ext-roster__indicator {
+  background: var(--st-error);
+}
+
+.ui-ext-roster__agent[data-status='working'] .ui-ext-roster__indicator {
+  background: var(--st-working);
+  box-shadow: 0 0 7px var(--st-working);
+  animation: ui-pulse-dot 1.4s ease-in-out infinite;
+}
+
+.ui-ext-roster__agent[data-status='working'] .ui-activity__text {
   color: var(--st-working);
 }
 
-.ui-ext-roster__agent[data-status='failed'] .ui-ext-roster__status,
-.ui-ext-roster__agent[data-status='dispatch_uncertain'] .ui-ext-roster__status,
-.ui-ext-roster__agent[data-status='delivery_failed'] .ui-ext-roster__status {
+.ui-ext-roster__agent[data-status='failed'] .ui-activity__text,
+.ui-ext-roster__agent[data-status='dispatch_uncertain'] .ui-activity__text,
+.ui-ext-roster__agent[data-status='delivery_failed'] .ui-activity__text {
   color: #ff9b8f;
 }
 
