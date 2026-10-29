@@ -9,12 +9,17 @@ import {
   EXTERNAL_IDLE_WANDER_MS,
   EXTERNAL_TERMINAL_INDICATOR_MS,
   externalAgentBubbleText,
+  externalAgentCardDetails,
   externalIdleVisual,
   hasConfirmedExternalAgentPresence,
+  EXTERNAL_AGENT_APPEARANCE,
 } from '../world/external-agents';
 import * as art from '../art';
 import { assembleBuilding } from '../world/layout/building';
+import { layoutProjectRoom } from '../world/layout/room';
+import { SpotRegistry } from '../world/sim/spots';
 import { ExternalAgentWallet } from './external-agents';
+import { HOMELAB_ROOM_ID } from '../world/homelab-room';
 
 const requestId = 'f78c4d01-ae91-48b4-9cbe-90794ec26757';
 const received: AgentEvent = {
@@ -38,6 +43,12 @@ function event(type: AgentEvent['type'], agent: AgentEvent['agent'], second: num
     summary: type,
     ...extra,
   };
+}
+
+function buildingWithHomeLab() {
+  const homeLab = layoutProjectRoom({ id: HOMELAB_ROOM_ID, slot: 0, seed: 912 }, art.roomTheme(912));
+  const other = layoutProjectRoom({ id: '/projects/other', slot: 1, seed: 413 }, art.roomTheme(413));
+  return assembleBuilding(2, [homeLab, other]);
 }
 
 describe('presença dos agentes externos', () => {
@@ -119,6 +130,29 @@ describe('presença dos agentes externos', () => {
     expect(externalAgentBubbleText(bmo)).not.toBe(externalAgentBubbleText(hermes));
   });
 
+  it('monta detalhes do card com ordem real e tempo decorrido da execução', () => {
+    const request = received;
+    const started = { ...event('agent_started', 'hermes', 10), request_id: request.request_id, summary: 'Buscando na base de dados.' };
+    const presence = deriveExternalAgentPresence([request, started]).find((item) => item.agent === 'hermes')!;
+    const details = externalAgentCardDetails([request, started], presence, Date.parse(started.occurred_at) + 60_000);
+    expect(details).toMatchObject({
+      projectPath: '~/homelab/',
+      order: request.summary,
+      action: 'Buscando na base de dados.',
+      actionIcon: '🔎',
+      elapsedMs: 60_000,
+    });
+  });
+
+  it('usa o tempo entre início e conclusão e não mostra um cronômetro após terminar', () => {
+    const request = received;
+    const started = { ...event('agent_started', 'hermes', 10), request_id: request.request_id };
+    const completed = { ...event('agent_completed', 'hermes', 25), request_id: request.request_id };
+    const presence = deriveExternalAgentPresence([request, started, completed]).find((item) => item.agent === 'hermes')!;
+    const details = externalAgentCardDetails([request, started, completed], presence, Date.parse(completed.occurred_at) + 60_000);
+    expect(details.elapsedMs).toBe(15_000);
+  });
+
   it('usa a conclusão recente em vez de manter um trabalho antigo como estado atual', () => {
     const oldRequest = { ...event('agent_started', 'hermes', 1), request_id: 'old-request' };
     const newRequest = { ...event('agent_completed', 'hermes', 2), request_id: 'new-request' };
@@ -158,7 +192,20 @@ describe('presença dos agentes externos', () => {
   });
 
   it('encaminha os três personagens externos pelo prédio sem adicioná-los à simulação', () => {
-    const characters = new ExternalAgentCharacters(art, assembleBuilding(2, []).grid);
+    const characters = new ExternalAgentCharacters(art, buildingWithHomeLab().grid);
+    expect(characters.characters.find((character) => character.agent === 'bmo')?.appearance).toMatchObject({
+      skin: '#9a6444',
+      hair: '#7cc45a',
+      topStyle: 'jacket',
+    });
+    expect(characters.characters.find((character) => character.agent === 'claw')?.appearance).toMatchObject({
+      hair: '#f0a24a',
+      top: '#f4f4f0',
+      topAccent: '#c0392b',
+      topStyle: 'shirt_tie',
+    });
+    expect(EXTERNAL_AGENT_APPEARANCE.bmo?.parts.hairStyle).toBe('short');
+    expect(EXTERNAL_AGENT_APPEARANCE.claw?.parts.hairStyle).toBe('short');
     characters.setPresence(deriveExternalAgentPresence([
       event('agent_started', 'bmo', 1),
       event('agent_started', 'hermes', 2),
@@ -175,7 +222,7 @@ describe('presença dos agentes externos', () => {
   });
 
   it('encaminha agentes em execução para assentos de trabalho distintos', () => {
-    const layout = assembleBuilding(2, []);
+    const layout = buildingWithHomeLab();
     const characters = new ExternalAgentCharacters(art, layout.grid);
     const spots = layout.spots.filter((spot) => ['desk', 'cafe_seat', 'sofa', 'armchair', 'beanbag'].includes(spot.kind));
     characters.setPresence(deriveExternalAgentPresence([
@@ -187,6 +234,7 @@ describe('presença dos agentes externos', () => {
     expect(new Set(characters.characters.map((character) => character.workSpotId)).size).toBe(3);
     for (const character of characters.characters) {
       expect(character.workSpotId).not.toBe('');
+      expect(spots.find((spot) => spot.id === character.workSpotId)?.areaId).toBe(HOMELAB_ROOM_ID);
       expect(character.seated).toBe(true);
       expect(character.pose).toBe('sit');
       expect(character.sortY).toBe(spots.find((spot) => spot.id === character.workSpotId)?.sortY ?? null);
@@ -194,7 +242,7 @@ describe('presença dos agentes externos', () => {
   });
 
   it('leva espera de shell e pedido de ajuda a uma estação com pose correspondente', () => {
-    const layout = assembleBuilding(2, []);
+    const layout = buildingWithHomeLab();
     const characters = new ExternalAgentCharacters(art, layout.grid);
     const spots = layout.spots.filter((spot) => ['desk', 'cafe_seat', 'sofa', 'armchair', 'beanbag'].includes(spot.kind));
     characters.setPresence(deriveExternalAgentPresence([
@@ -210,6 +258,99 @@ describe('presença dos agentes externos', () => {
     expect(hermes.seated).toBe(true);
     expect(claw.pose).toBe('raise_hand');
     expect(claw.seated).toBe(true);
+  });
+
+  it('só agenda passeios após um evento de conclusão e reserva os lugares partilhados', () => {
+    const layout = assembleBuilding(2, []);
+    const spots = new SpotRegistry();
+    spots.setSpots(layout.spots);
+    const characters = new ExternalAgentCharacters(art, layout.grid);
+    characters.setPresence(deriveExternalAgentPresence([
+      event('agent_completed', 'bmo', 1),
+      event('agent_completed', 'hermes', 2),
+      event('agent_completed', 'claw', 3),
+    ]));
+    const facilities = { spots, machineUntil: new Map<string, number>(), stallBusy: new Set<string>() };
+    const at = Date.parse(received.occurred_at) + 60_000;
+    let sawReservedOuting = false;
+    for (let frame = 0; frame < 1_200; frame++) {
+      characters.update(0.1, at + frame * 100, 'normal', layout.spots.filter((spot) => !spots.ownerOf(spot.id)), facilities);
+      for (const character of characters.characters) {
+        if (!character.activity) continue;
+        sawReservedOuting = true;
+        expect(spots.ownerOf(character.activity.spotId)).toBe(character.id);
+        if (character.activity.extraSpotId) expect(spots.ownerOf(character.activity.extraSpotId)).toBe(character.id);
+      }
+    }
+    expect(sawReservedOuting).toBe(true);
+  });
+
+  it('leva agentes ociosos ao banheiro após uma hora e interrompe a pausa se chega uma tarefa', () => {
+    const layout = assembleBuilding(2, []);
+    const spots = new SpotRegistry();
+    spots.setSpots(layout.spots);
+    const characters = new ExternalAgentCharacters(art, layout.grid);
+    characters.setPresence(deriveExternalAgentPresence([
+      event('agent_completed', 'bmo', 1),
+      event('agent_completed', 'hermes', 2),
+      event('agent_completed', 'claw', 3),
+    ]));
+    const facilities = { spots, machineUntil: new Map<string, number>(), stallBusy: new Set<string>() };
+    const dueAt = Date.parse(received.occurred_at) + 60 * 60_000 + 10_000;
+    characters.update(0.1, dueAt, 'normal', layout.spots, facilities);
+    const bathroomAgent = characters.characters.find((character) => character.activity?.kind === 'bathroom');
+    expect(bathroomAgent).toBeDefined();
+
+    for (let frame = 1; frame < 700 && !characters.characters.some((character) => character.hidden); frame++) {
+      characters.update(0.1, dueAt + frame * 100, 'normal', layout.spots, facilities);
+    }
+    expect(bathroomAgent!.hidden).toBe(true);
+    const stallId = bathroomAgent!.activity?.furnitureId;
+    expect(characters.characters.some((character) => character.hidden)).toBe(true);
+    expect(facilities.stallBusy.size).toBeGreaterThan(0);
+
+    const newRequest = event('agent_started', bathroomAgent!.agent, 4);
+    characters.setPresence(deriveExternalAgentPresence([
+      event('agent_completed', 'bmo', 1),
+      event('agent_completed', 'hermes', 2),
+      event('agent_completed', 'claw', 3),
+      newRequest,
+    ]));
+    characters.update(0.1, dueAt + 70_000, 'normal', layout.spots, facilities);
+    expect(bathroomAgent!.hidden).toBe(false);
+    expect(bathroomAgent!.activity).toBeNull();
+    if (stallId) expect(facilities.stallBusy.has(stallId)).toBe(false);
+  });
+
+  it('convida outro agente para pingue-pongue e usa as duas posições reservadas', () => {
+    const layout = assembleBuilding(2, []);
+    const spots = new SpotRegistry();
+    spots.setSpots(layout.spots);
+    const characters = new ExternalAgentCharacters(art, layout.grid);
+    characters.setPresence(deriveExternalAgentPresence([
+      event('agent_completed', 'bmo', 1),
+      event('agent_completed', 'hermes', 2),
+      event('agent_completed', 'claw', 3),
+    ]));
+    const facilities = { spots, machineUntil: new Map<string, number>(), stallBusy: new Set<string>() };
+    const at = Date.parse(received.occurred_at);
+    let pair: readonly [typeof characters.characters[number], typeof characters.characters[number]] | null = null;
+    const observed = new Set<string>();
+    for (let frame = 0; frame < 80_000 && (!pair || observed.size < 5); frame++) {
+      characters.update(0.1, at + frame * 100, 'normal', layout.spots, facilities);
+      pair ??= characters.pingPongPair();
+      if (characters.characters.some((character) => character.activity?.kind === 'coffee' && character.activity.phase === 'using')) observed.add('coffee');
+      if (characters.characters.some((character) => character.activity?.kind === 'snack' && ['eating', 'travel_seat'].includes(character.activity.phase))) observed.add('snack');
+      if (characters.tvSeed() !== null) observed.add('tv');
+      if (characters.pingPongPair()) observed.add('pingpong');
+      if (characters.characters.some((character) => character.hidden) && facilities.stallBusy.size > 0) observed.add('bathroom');
+    }
+    expect(pair).not.toBeNull();
+    expect(observed).toEqual(new Set(['coffee', 'snack', 'tv', 'pingpong', 'bathroom']));
+    expect(pair!.every((character) => character.pose === 'play' && character.held === 'paddle')).toBe(true);
+    expect(spots.ownerOf(pair![0].activity!.spotId)).toBe(pair![0].id);
+    expect(spots.ownerOf(pair![1].activity!.spotId)).toBe(pair![1].id);
+    expect(pair!.some((character) => character.activityText.includes('pingue-pongue'))).toBe(true);
   });
 
   it('mantém os destinos de passeio caminháveis e os personagens voltados para a câmera', () => {

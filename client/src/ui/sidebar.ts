@@ -1,6 +1,6 @@
 // Barra lateral: busca, filtro por conta e a lista de salas -> agentes -> subagentes.
 import type { AccountInfo, AgentInfo } from '../../../shared/types';
-import { deriveExternalAgentPresence, externalAgentName, type ExternalAgentPresence } from '../world/external-agents';
+import { deriveExternalAgentPresence, externalAgentCardDetails, externalAgentName, type ExternalAgentPresence } from '../world/external-agents';
 import { roomTheme } from '../art';
 import type { UiComponent, UiContext } from './context';
 import { moveAgent, orderAgents } from './agentorder';
@@ -175,9 +175,11 @@ export class Sidebar implements UiComponent {
     this.shownRooms = groups.map((g) => g.room.id);
     this.rooms.sync(groups);
     const query = normalizeSearch(this.query.trim());
-    const externalAgents = deriveExternalAgentPresence(this.ctx.store.agentEvents).filter((presence) =>
-      !query || normalizeSearch(`${externalAgentName(presence.agent)} ${externalAgentStatusLabel(presence.status)}`).includes(query),
-    );
+    const externalAgents = deriveExternalAgentPresence(this.ctx.store.agentEvents).filter((presence) => {
+      if (!query) return true;
+      const details = externalAgentCardDetails(this.ctx.store.agentEvents, presence, this.ctx.now());
+      return normalizeSearch(`${externalAgentName(presence.agent)} ${externalAgentStatusLabel(presence.status)} ${details.order} ${details.action}`).includes(query);
+    });
     this.externalRoster.sync(externalAgents);
     setText(this.externalCount, String(externalAgents.length));
     setHidden(this.externalSection, externalAgents.length === 0);
@@ -225,12 +227,13 @@ export class Sidebar implements UiComponent {
   private createExternalAgent(presence: ExternalAgentPresence): HTMLButtonElement {
     const avatar = h('span', { class: 'ui-ext-roster__avatar', attrs: { 'aria-hidden': 'true' } }, externalAvatarImage(presence.agent, 2));
     const name = h('span', { class: 'ui-ext-roster__name' });
+    const project = h('span', { class: 'ui-ext-roster__room', text: '~/homelab/' });
+    const order = h('span', { class: 'ui-ext-roster__order' });
     const status = h('span', { class: 'ui-ext-roster__status' });
     const time = h('time', { class: 'ui-ext-roster__time' });
-    const indicator = h('span', { class: 'ui-ext-roster__indicator', attrs: { 'aria-hidden': 'true' } });
-    const statusLine = h('span', { class: 'ui-ext-roster__status-line' }, indicator, status, time);
+    const statusLine = h('span', { class: 'ui-ext-roster__status-line' }, status, time);
     const progress = h('span', { class: 'ui-ext-roster__progress', attrs: { 'aria-hidden': 'true' } }, h('span', { class: 'ui-ext-roster__progress-fill' }));
-    const button = h('button', { class: 'ui-ext-roster__agent', type: 'button', attrs: { role: 'listitem', 'data-agent': presence.agent } }, avatar, h('span', { class: 'ui-ext-roster__details' }, name, statusLine, progress));
+    const button = h('button', { class: 'ui-ext-roster__agent', type: 'button', attrs: { role: 'listitem', 'data-agent': presence.agent } }, avatar, h('span', { class: 'ui-ext-roster__details' }, name, project, order, statusLine, progress));
     button.addEventListener('click', () => this.ctx.select({ type: 'agent', id: `external:${presence.agent}` }, { focus: true }));
     return button;
   }
@@ -238,19 +241,33 @@ export class Sidebar implements UiComponent {
   private updateExternalAgent(button: HTMLButtonElement, presence: ExternalAgentPresence): void {
     const name = externalAgentName(presence.agent);
     const status = externalAgentStatusLabel(presence.status);
+    const details = externalAgentCardDetails(this.ctx.store.agentEvents, presence, this.ctx.now());
     const active = ['receiving', 'routing', 'routed', 'waiting', 'waiting_shell', 'needs_help', 'working'].includes(presence.status);
     const at = presence.lastEvent ? Date.parse(presence.lastEvent.occurred_at) : NaN;
     const time = button.querySelector('time')!;
     setText(button.querySelector('.ui-ext-roster__name')!, name);
-    setText(button.querySelector('.ui-ext-roster__status')!, status);
-    setText(time, Number.isFinite(at) ? active ? formatElapsed(this.ctx.now() - at) : relativeTime(at, this.ctx.now()) : '');
-    setHidden(time, !Number.isFinite(at));
+    setText(button.querySelector('.ui-ext-roster__room')!, details.projectPath);
+    const order = button.querySelector<HTMLElement>('.ui-ext-roster__order')!;
+    setText(order, details.order ? `📨 ${details.order}` : '');
+    setTitle(order, details.order);
+    setHidden(order, !details.order);
+    const actionText = details.action || status;
+    const action = button.querySelector<HTMLElement>('.ui-ext-roster__status')!;
+    setText(action, `${details.action ? details.actionIcon : '💬'} ${actionText}`);
+    setTitle(action, actionText);
+    const finished = ['completed', 'failed', 'delivered', 'delivery_failed'].includes(presence.status);
+    const elapsed = details.elapsedMs;
+    setText(time, elapsed !== undefined
+      ? finished ? tr('Levou {0}', [formatElapsed(elapsed)]) : formatElapsed(elapsed)
+      : Number.isFinite(at) ? relativeTime(at, this.ctx.now()) : '');
+    setHidden(time, elapsed === undefined && !Number.isFinite(at));
     setAttr(time, 'datetime', presence.lastEvent?.occurred_at ?? '');
-    setTitle(time, Number.isFinite(at) ? active
-      ? tr('Ativo há {0}', [formatElapsed(this.ctx.now() - at)])
-      : tr('Último evento: {0}', [relativeTime(at, this.ctx.now())]) : '');
-    setAttr(button, 'aria-label', `${name}: ${status}${Number.isFinite(at) ? ` · ${time.textContent}` : ''}`);
-    setTitle(button, `${name}: ${status}${Number.isFinite(at) ? ` · ${time.textContent}` : ''}`);
+    setTitle(time, elapsed !== undefined
+      ? finished ? tr('Tempo até a conclusão: {0}', [formatElapsed(elapsed)]) : tr('Tempo em andamento: {0}', [formatElapsed(elapsed)])
+      : Number.isFinite(at) ? tr('Último evento: {0}', [relativeTime(at, this.ctx.now())]) : '');
+    const label = `${name} · ${details.projectPath}${details.order ? ` · ${details.order}` : ''} · ${actionText}${elapsed !== undefined ? ` · ${formatElapsed(elapsed)}` : ''}`;
+    setAttr(button, 'aria-label', label);
+    setTitle(button, label);
     const selected = this.ctx.selection();
     const isSelected = selected?.type === 'agent' && selected.id === `external:${presence.agent}`;
     setAttr(button, 'aria-pressed', String(isSelected));

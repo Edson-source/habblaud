@@ -4,7 +4,8 @@
 import { TILE, type ArtModule, type CharacterFrameRequest, type IconName, type ScreenMode, type Sprite } from '../../art/api';
 import type { SeasonalTheme, WorldOptions } from '../api';
 import type { ExternalAgentPresence } from '../external-agents';
-import { ExternalAgentCharacters, externalAgentsInRect, type ExternalAgentCharacter } from '../external-agents';
+import { ExternalAgentCharacters, externalAgentsInRect, type ExternalAgentCharacter, type ExternalAgentWalletSnapshot } from '../external-agents';
+import { HOMELAB_ROOM_ID, isHomeLabRoom } from '../homelab-room';
 import type { WorldAssets } from '../assets';
 import type { Camera } from '../camera';
 import { BUILDING_H, COL_W, CORE_COLS, CORRIDOR_Y } from '../constants';
@@ -136,6 +137,11 @@ export class Renderer {
 
   setExternalAgentPresence(presences: readonly ExternalAgentPresence[]): void {
     this.externalAgents.setPresence(presences);
+    this.sim.setExternalHomeLabEnabled(presences.some((presence) => presence.status !== 'unknown'));
+  }
+
+  setExternalAgentWallet(wallet: ExternalAgentWalletSnapshot): void {
+    this.externalAgents.setWallet(wallet);
   }
 
   setAssets(a: WorldAssets | null): void {
@@ -149,6 +155,8 @@ export class Renderer {
   sync(theme: SeasonalTheme = 'none'): void {
     const sim = this.sim;
     this.externalAgents.setGrid(sim.building.grid);
+    const homeLab = [...sim.rooms.values()].find((room) => room.present && isHomeLabRoom(room.info));
+    this.externalAgents.setWorkAreaId(homeLab?.id ?? HOMELAB_ROOM_ID);
     const themeChanged = theme !== this.theme;
     this.theme = theme;
     const assetsChanged = this.builtAssetsVersion !== this.assetsVersion || themeChanged;
@@ -433,7 +441,11 @@ export class Renderer {
       }
     }
     const externalWorkSpots = [...this.sim.spots.all()].filter((spot) => !this.sim.spots.ownerOf(spot.id));
-    this.externalAgents.update(dt, now, opts.liveliness, externalWorkSpots);
+    this.externalAgents.update(dt, now, opts.liveliness, externalWorkSpots, {
+      spots: this.sim.spots,
+      machineUntil: this.sim.machineUntil,
+      stallBusy: this.sim.stallBusy,
+    });
     // os agentes e, na visita, o visitante
     for (const ch of this.sim.people()) {
       const head = this.headOf(ch);
@@ -450,7 +462,7 @@ export class Renderer {
     for (const ch of this.externalAgents.characters) {
       const head = this.externalHeadOf(ch);
       head.visible = false;
-      if (this.sim.visit) continue;
+      if (this.sim.visit || ch.hidden) continue;
       if (!visible(ch.x - 24, ch.y - 48, 48, 56)) {
         head.x = ch.x;
         head.y = ch.y - 26;
@@ -674,8 +686,9 @@ export class Renderer {
         const r = s.base.rects?.tv;
         // roda na TV do lounge: o programa escolhido (futebol, novela, desenho) ou o videogame
         const live = this.sim.social.tvScreen();
+        const externalSeed = this.externalAgents.tvSeed();
         const mode = live ? live.mode : TV_MODES[Math.floor(now / 9000) % TV_MODES.length];
-        const seed = live ? live.seed : w.seed;
+        const seed = live ? live.seed : externalSeed ?? w.seed;
         if (r) this.safe(() => this.art.drawScreen(ctx, { x: o.x + r.x, y: o.y + rise + r.y, w: r.w, h: r.h }, mode, now, seed));
         return;
       }
@@ -1243,6 +1256,23 @@ export class Renderer {
 
   private drawPingPong(now: number): void {
     const { ctx } = this;
+    const external = this.externalAgents.pingPongPair();
+    if (external) {
+      const [a, b] = external;
+      const left = a.x < b.x ? a : b;
+      const right = a.x < b.x ? b : a;
+      const startedAt = Math.min(a.activity?.startedAt ?? now, b.activity?.startedAt ?? now);
+      const period = 1100;
+      const phase = ((now - startedAt) % (period * 2)) / period;
+      const u = phase < 1 ? phase : 2 - phase;
+      const x = left.x + 9 + (right.x - left.x - 18) * u;
+      const baseY = (left.y + right.y) / 2 - 9;
+      const arc = Math.sin(Math.PI * ((u * 2) % 1)) * 6;
+      ctx.fillStyle = 'rgba(30,40,60,0.35)';
+      ctx.fillRect(Math.round(x) - 1, Math.round(baseY) + 1, 2, 1);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.round(x) - 1, Math.round(baseY - arc) - 1, 2, 2);
+    }
     for (const g of this.sim.social.gatherings) {
       if (g.kind !== 'pingpong' || g.phase !== 'run') continue;
       let a: Character | undefined;

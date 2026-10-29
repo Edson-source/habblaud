@@ -3,7 +3,7 @@ import { partsKey } from '../../../shared/appearance';
 import type { AgentInfo } from '../../../shared/types';
 import type { ExternalAgent } from '../../../shared/agent-events';
 import { avatarCanvas } from '../art';
-import { EXTERNAL_AGENT_SEEDS } from '../world/external-agents';
+import { EXTERNAL_AGENT_APPEARANCE, EXTERNAL_AGENT_SEEDS } from '../world/external-agents';
 import { h } from './dom';
 
 const cache = new Map<string, { url: string; w: number; h: number }>();
@@ -43,7 +43,7 @@ export function externalAvatarImage(agent: ExternalAgent, scale: number): HTMLIm
   const key = `${agent}:${scale}`;
   let data = externalCache.get(key);
   if (!data) {
-    const canvas = avatarCanvas(EXTERNAL_AGENT_SEEDS[agent], { scale });
+    const canvas = avatarCanvas(EXTERNAL_AGENT_SEEDS[agent], { scale, ...EXTERNAL_AGENT_APPEARANCE[agent] });
     data = { url: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height };
     externalCache.set(key, data);
   }

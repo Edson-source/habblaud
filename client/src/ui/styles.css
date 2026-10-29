@@ -1660,7 +1660,7 @@
 
 .ui-ext-roster__agent {
   display: grid;
-  grid-template-columns: 25px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
   gap: 8px 9px;
   width: 100%;
@@ -1678,8 +1678,8 @@
 .ui-ext-roster__avatar {
   display: grid;
   place-items: center;
-  width: 25px;
-  height: 25px;
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--ui-line-strong);
   border-radius: 7px;
   background: rgba(124, 200, 255, 0.07);
@@ -1714,6 +1714,26 @@
   font-weight: 650;
 }
 
+.ui-ext-roster__room {
+  overflow: hidden;
+  color: var(--ui-accent);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-ext-roster__order {
+  overflow: hidden;
+  color: var(--ui-text);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-ext-roster__order[hidden] {
+  display: none;
+}
+
 .ui-ext-roster__status-line {
   display: flex;
   align-items: center;
@@ -1736,14 +1756,6 @@
   color: var(--ui-muted);
   font: 10px var(--font-mono);
   font-variant-numeric: tabular-nums;
-}
-
-.ui-ext-roster__indicator {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--ui-faint);
 }
 
 .ui-ext-roster__progress {
@@ -1771,19 +1783,6 @@
 @keyframes ui-ext-progress {
   0% { transform: translateX(-110%); }
   100% { transform: translateX(320%); }
-}
-
-.ui-ext-roster__agent[data-status='working'] .ui-ext-roster__indicator,
-.ui-ext-roster__agent[data-status='receiving'] .ui-ext-roster__indicator,
-.ui-ext-roster__agent[data-status='routing'] .ui-ext-roster__indicator {
-  background: var(--st-working);
-  box-shadow: 0 0 7px var(--st-working);
-  animation: ui-pulse-dot 1.4s ease-in-out infinite;
-}
-
-.ui-ext-roster__agent[data-status='waiting'] .ui-ext-roster__indicator,
-.ui-ext-roster__agent[data-status='routed'] .ui-ext-roster__indicator {
-  background: var(--ui-accent);
 }
 
 .ui-ext-roster__agent[data-status='working'] .ui-ext-roster__status {
@@ -2854,8 +2853,8 @@
 
 .ui-ext-profile__avatar {
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 54px;
+  height: 54px;
   flex: none;
   place-items: center;
   border: 1px solid var(--ui-line-strong);

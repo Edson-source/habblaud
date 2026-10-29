@@ -10,6 +10,7 @@ import { RECEPTION_ID } from '../layout/core';
 import { columnsFor, inRect } from '../layout/geometry';
 import { layoutProjectRoom } from '../layout/room';
 import type { SpotDef, SpotKind } from '../layout/types';
+import { HOMELAB_ROOM_INFO, isHomeLabRoom } from '../homelab-room';
 import { PathFinder } from '../path/astar';
 import { BLOCKED, FREE, SEAT } from '../path/grid';
 import { PROGRAM_SEED } from '../social/gathering';
@@ -128,6 +129,7 @@ export class Sim {
   /** Festa e alarme das salas (eventos do GitHub; sim/github.ts). */
   readonly roomFx = new RoomFxState();
   private lastSnapshot: OfficeSnapshot | null = null;
+  private externalHomeLabEnabled = false;
   /** Desde quando há uma vaga livre antes da última sala (0 = não há). */
   private gapSince = 0;
   private moveSeq = 0;
@@ -161,6 +163,12 @@ export class Sim {
 
   applySnapshot(input: OfficeSnapshot, now: number): void {
     let snap = this.injected.rooms.length || this.injected.agents.length ? { ...input, rooms: [...input.rooms, ...this.injected.rooms], agents: [...input.agents, ...this.injected.agents] } : input;
+    const homeLab = snap.rooms.find(isHomeLabRoom);
+    if (homeLab) {
+      snap = { ...snap, rooms: snap.rooms.map((room) => room.id === homeLab.id ? { ...room, name: 'HomeLab' } : room) };
+    } else if (this.externalHomeLabEnabled) {
+      snap = { ...snap, rooms: [...snap.rooms, HOMELAB_ROOM_INFO] };
+    }
     if (this.agentPatches.size) {
       const patches = this.agentPatches;
       snap = { ...snap, agents: snap.agents.map((a) => (patches.has(a.id) ? { ...a, ...patches.get(a.id) } : a)) };
@@ -248,6 +256,12 @@ export class Sim {
   /** Reaplica o último snapshot (depuração). */
   reapply(now: number): void {
     if (this.lastSnapshot) this.applySnapshot(this.lastSnapshot, now);
+  }
+
+  setExternalHomeLabEnabled(enabled: boolean): void {
+    if (enabled === this.externalHomeLabEnabled) return;
+    this.externalHomeLabEnabled = enabled;
+    this.reapply(this.now);
   }
 
   private createRoom(r: RoomInfo, first: boolean, now: number): RoomState {

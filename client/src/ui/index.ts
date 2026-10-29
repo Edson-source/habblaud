@@ -17,7 +17,7 @@ import { RoomRenamer } from './roomrename';
 import { h } from './dom';
 import { Drawer } from './drawer';
 import { FeedPanel } from './feed';
-import { ExternalAgentsPanel } from './external-agents';
+import { ExternalAgentWallet, ExternalAgentsPanel } from './external-agents';
 import { deriveExternalAgentPresence } from '../world/external-agents';
 import { HelpDialog } from './help';
 import { HistoryPopover } from './history';
@@ -238,8 +238,17 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
   drawer = new Drawer(ctx, terminal, pty);
   const feed = new FeedPanel(ctx);
   const externalAgents = new ExternalAgentsPanel(ctx);
+  const externalWallet = new ExternalAgentWallet();
   ctx.openExternalAgents = (agent, opener) => externalAgents.openAgent(agent, opener);
-  const syncExternalAgents = () => world.setExternalAgentPresence?.(deriveExternalAgentPresence(store.agentEvents));
+  const syncExternalAgents = () => {
+    externalWallet.sync(store.agentEvents);
+    world.setExternalAgentPresence?.(deriveExternalAgentPresence(store.agentEvents));
+    world.setExternalAgentWallet?.({
+      bmo: externalWallet.balance('bmo'),
+      hermes: externalWallet.balance('hermes'),
+      claw: externalWallet.balance('claw'),
+    });
+  };
   syncExternalAgents();
   store.on('agentEvents', syncExternalAgents);
   feed.addHeaderButton(externalAgents.button);

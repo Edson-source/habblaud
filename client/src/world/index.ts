@@ -4,7 +4,7 @@ import * as artModule from '../art';
 import { TILE, type ArtModule } from '../art/api';
 import type { OfficeStore } from '../net/store';
 import { DEFAULT_WORLD_OPTIONS, seasonalThemeFor, type Selection, type SocialEvent, type SoundCue, type WorldApi, type WorldOptions, type WorldPlayback } from './api';
-import { externalAgentFromId, type ExternalAgentPresence } from './external-agents';
+import { externalAgentFromId, type ExternalAgentPresence, type ExternalAgentWalletSnapshot } from './external-agents';
 import { loadWorldAssets, type WorldAssets } from './assets';
 import { Camera, overviewFrame } from './camera';
 import { createDebug, type WorldDebug } from './debug';
@@ -63,6 +63,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   /** Timelapse ligado: relógio próprio do mundo (`worldNow`), acelerado pelo fator de animação. */
   let playback: WorldPlayback | null = null;
   let externalAgentPresence: readonly ExternalAgentPresence[] = [];
+  let externalAgentWallet: ExternalAgentWalletSnapshot = { bmo: 0, hermes: 0, claw: 0 };
   let worldNow = 0;
   const selectCbs = new Set<(s: Selection) => void>();
   const hoverCbs = new Set<(id: string | null) => void>();
@@ -388,6 +389,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     sim = new Sim(art, () => options, playback ? null : undefined, { visit: visitMode });
     renderer = new Renderer(canvas, art, sim, camera);
     renderer.setExternalAgentPresence(playback || visitMode ? [] : externalAgentPresence);
+    renderer.setExternalAgentWallet(externalAgentWallet);
     if (assets) renderer.setAssets(assets);
     if (playback) {
       const p = playback;
@@ -462,6 +464,10 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     setExternalAgentPresence: (presences) => {
       externalAgentPresence = presences;
       renderer.setExternalAgentPresence(playback || visitMode ? [] : presences);
+    },
+    setExternalAgentWallet: (wallet) => {
+      externalAgentWallet = wallet;
+      renderer.setExternalAgentWallet(wallet);
     },
     onSound: (cb) => {
       soundCbs.add(cb);

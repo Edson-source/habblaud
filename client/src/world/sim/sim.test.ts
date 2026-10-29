@@ -4,6 +4,7 @@ import type { AppearanceParts } from '../../../../shared/appearance';
 import type { AgentInfo, OfficeSnapshot, RoomInfo, ShellJob } from '../../../../shared/types';
 import type { Appearance, ArtModule, RoomTheme } from '../../art/api';
 import { DEFAULT_WORLD_OPTIONS } from '../api';
+import { HOMELAB_ROOM_ID, isHomeLabRoom } from '../homelab-room';
 import type { Character } from './character';
 import { SHELL_DONE_TOOL, Sim } from './sim';
 
@@ -91,6 +92,32 @@ function newSim(): Sim {
 }
 
 describe('simulação do escritório', () => {
+  it('cria a sala HomeLab reservada para agentes desse projeto', () => {
+    const sim = newSim();
+    const homelab = room('/projects/homelab', 0);
+    sim.applySnapshot(snap([homelab], [agent('ana-homelab', homelab.id, 'working')]), T0);
+
+    const homeLabRoom = sim.rooms.get(homelab.id)!;
+    expect(homeLabRoom.info.name).toBe('HomeLab');
+    expect([...sim.rooms.values()].filter((item) => isHomeLabRoom(item.info))).toHaveLength(1);
+    const homeLabDesks = [...sim.spots.all()].filter((spot) => spot.areaId === homelab.id && spot.kind === 'desk');
+    expect(homeLabDesks.length).toBeGreaterThan(0);
+    expect(homeLabDesks.some((spot) => sim.spots.ownerOf(spot.id) === 'ana-homelab')).toBe(true);
+  });
+
+  it('mantém os assentos HomeLab fora do alcance de agentes de outros projetos', () => {
+    const sim = newSim();
+    const project = room('/projects/site', 0);
+    sim.setExternalHomeLabEnabled(true);
+    sim.applySnapshot(snap([project], [agent('ana', project.id, 'working')]), T0);
+    const homeLabRoom = [...sim.rooms.values()].find((item) => isHomeLabRoom(item.info))!;
+    expect(homeLabRoom.id).toBe(HOMELAB_ROOM_ID);
+    const homeLabDesks = [...sim.spots.all()].filter((spot) => spot.areaId === homeLabRoom.id && spot.kind === 'desk');
+    expect(homeLabDesks.length).toBeGreaterThan(0);
+    expect(homeLabDesks.every((spot) => sim.spots.ownerOf(spot.id) !== 'ana')).toBe(true);
+    expect(sim.chars.get('ana')?.homeSpot).not.toMatch(/^habblaud:homelab:/);
+  });
+
   it('carga inicial: quem trabalha já está sentado digitando, sala acesa', () => {
     const sim = newSim();
     const clock = { now: T0 };

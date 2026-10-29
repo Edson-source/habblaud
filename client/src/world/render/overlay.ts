@@ -410,11 +410,12 @@ export class Overlay {
       const head = this.renderer.externalHeads.get(character.id);
       if (!event || !head?.visible) continue;
       const age = now - Date.parse(event.occurred_at);
+      const activityText = now < character.activityTextUntil ? character.activityText : '';
       const active = ['receiving', 'routing', 'routed', 'waiting', 'waiting_shell', 'needs_help', 'working'].includes(character.presence.status);
-      if (!active && (age < 0 || age >= RECENT_MS)) continue;
-      const alpha = active ? 1 : Math.min(1, age / 150, (RECENT_MS - age) / 500);
+      if (!active && !activityText && (age < 0 || age >= RECENT_MS)) continue;
+      const alpha = active || activityText ? 1 : Math.min(1, age / 150, (RECENT_MS - age) / 500);
       if (alpha <= 0.01) continue;
-      const message = externalAgentBubbleText(character.presence).trim();
+      const message = externalAgentBubbleText(character.presence, activityText).trim();
       if (!message) continue;
       const text = this.fit(BUBBLE_FONT, message, BUBBLE_MAX_W - 30);
       const w = Math.round(Math.min(BUBBLE_MAX_W, this.measure(BUBBLE_FONT, text) + 26));
