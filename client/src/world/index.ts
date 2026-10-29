@@ -4,6 +4,7 @@ import * as artModule from '../art';
 import { TILE, type ArtModule } from '../art/api';
 import type { OfficeStore } from '../net/store';
 import { DEFAULT_WORLD_OPTIONS, seasonalThemeFor, type Selection, type SocialEvent, type SoundCue, type WorldApi, type WorldOptions, type WorldPlayback } from './api';
+import { externalAgentFromId, type ExternalAgentPresence } from './external-agents';
 import { loadWorldAssets, type WorldAssets } from './assets';
 import { Camera, overviewFrame } from './camera';
 import { createDebug, type WorldDebug } from './debug';
@@ -61,6 +62,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   let assets: WorldAssets | null = null;
   /** Timelapse ligado: relógio próprio do mundo (`worldNow`), acelerado pelo fator de animação. */
   let playback: WorldPlayback | null = null;
+  let externalAgentPresence: readonly ExternalAgentPresence[] = [];
   let worldNow = 0;
   const selectCbs = new Set<(s: Selection) => void>();
   const hoverCbs = new Set<(id: string | null) => void>();
@@ -151,7 +153,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   };
 
   const focusAgent = (id: string, opts: { follow?: boolean } = {}) => {
-    const ch = sim.person(id);
+    const ch = sim.person(id) ?? renderer.externalAgents.characters.find((character) => character.id === id);
     if (!ch) return;
     userMoved = true;
     const zoom = Math.max(camera.zoom, camera.snapZoom(3));
@@ -191,6 +193,16 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       if (h.depth > bestDepth) {
         bestDepth = h.depth;
         best = id;
+      }
+    }
+    if (!best) {
+      for (const [id, h] of renderer.externalHeads) {
+        if (!h.visible) continue;
+        if (w.x < h.bx - slack || w.x > h.bx + h.bw + slack || w.y < h.by - slack || w.y > h.by + h.bh + slack) continue;
+        if (h.depth > bestDepth) {
+          bestDepth = h.depth;
+          best = id;
+        }
       }
     }
     if (best) return { type: 'agent', id: best };
@@ -302,7 +314,9 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       }
       // visita: andando pelo teclado, a câmera vai junto
       if (visitMode && sim.visitor && (sim.visitorIntent.dx || sim.visitorIntent.dy) && camera.follow !== VISITOR_ID) followVisitor();
-      const followCh = camera.follow ? sim.person(camera.follow) : undefined;
+      const followCh = camera.follow
+        ? sim.person(camera.follow) ?? renderer.externalAgents.characters.find((character) => character.id === camera.follow)
+        : undefined;
       if (camera.follow && !followCh) camera.follow = null;
       camera.update(real, followCh ? camera.centerFor(followCh.x, followCh.y - 12, camera.zoom) : null, realDt);
       renderer.frame(now, dt, options, { agent: selection?.type === 'agent' ? selection.id : null, room: selection?.type === 'room' ? selection.id : null, hover });
@@ -315,7 +329,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
         setHover(hit?.type === 'agent' ? hit.id : null);
       }
       // seleção de quem já foi embora
-      if (selection?.type === 'agent' && !sim.chars.has(selection.id)) setSelection(null);
+      if (selection?.type === 'agent' && !sim.chars.has(selection.id) && !externalAgentFromId(selection.id)) setSelection(null);
       if (selection?.type === 'room' && !sim.rooms.has(selection.id)) setSelection(null);
     } catch (err) {
       console.error('[mundo] erro no frame', err);
@@ -373,6 +387,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
     sim.social.wallets.save(Date.now());
     sim = new Sim(art, () => options, playback ? null : undefined, { visit: visitMode });
     renderer = new Renderer(canvas, art, sim, camera);
+    renderer.setExternalAgentPresence(playback || visitMode ? [] : externalAgentPresence);
     if (assets) renderer.setAssets(assets);
     if (playback) {
       const p = playback;
@@ -424,7 +439,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       if (!userMoved && framed) overview(true);
     },
     screenPositionOf: (id) => {
-      const h = renderer.heads.get(id);
+      const h = renderer.heads.get(id) ?? renderer.externalHeads.get(id);
       if (!h || !h.visible) return null;
       const p = camera.worldToScreen(h.x, h.y - 2);
       if (p.x < 0 || p.y < 0 || p.x > camera.viewW || p.y > camera.viewH) return null;
@@ -443,6 +458,10 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       playback = p;
       worldNow = p ? p.clock() : 0;
       rebuild();
+    },
+    setExternalAgentPresence: (presences) => {
+      externalAgentPresence = presences;
+      renderer.setExternalAgentPresence(playback || visitMode ? [] : presences);
     },
     onSound: (cb) => {
       soundCbs.add(cb);

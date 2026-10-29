@@ -3,6 +3,8 @@
 // nítido) fica em overlay.ts.
 import { TILE, type ArtModule, type CharacterFrameRequest, type IconName, type ScreenMode, type Sprite } from '../../art/api';
 import type { SeasonalTheme, WorldOptions } from '../api';
+import type { ExternalAgentPresence } from '../external-agents';
+import { ExternalAgentCharacters, externalAgentsInRect, type ExternalAgentCharacter } from '../external-agents';
 import type { WorldAssets } from '../assets';
 import type { Camera } from '../camera';
 import { BUILDING_H, COL_W, CORE_COLS, CORRIDOR_Y } from '../constants';
@@ -28,6 +30,7 @@ const enum K {
   FurnBase,
   FurnFront,
   Char,
+  ExternalChar,
   Prop,
   Car,
 }
@@ -35,7 +38,7 @@ const enum K {
 interface Ent {
   k: K;
   y: number;
-  ref: FurnVis | Character | ExteriorProp | Car | null;
+  ref: FurnVis | Character | ExternalAgentCharacter | ExteriorProp | Car | null;
   area: AreaVis | null;
   scale: number;
 }
@@ -79,6 +82,8 @@ export class Renderer {
   readonly ctx: CanvasRenderingContext2D;
   readonly areas = new Map<string, AreaVis>();
   readonly heads = new Map<string, HeadInfo>();
+  readonly externalHeads = new Map<string, HeadInfo>();
+  readonly externalAgents: ExternalAgentCharacters;
   exterior: ExteriorLayout;
   shells: SlotShell[] = [];
   shellWindows: WallVis[] = [];
@@ -126,6 +131,11 @@ export class Renderer {
     this.ctx = canvas.getContext('2d', { alpha: false })!;
     this.exterior = layoutExterior(sim.building.cols);
     this.lighting = new Lighting(art, sim);
+    this.externalAgents = new ExternalAgentCharacters(art, sim.building.grid);
+  }
+
+  setExternalAgentPresence(presences: readonly ExternalAgentPresence[]): void {
+    this.externalAgents.setPresence(presences);
   }
 
   setAssets(a: WorldAssets | null): void {
@@ -138,6 +148,7 @@ export class Renderer {
   /** Mantém caches e visuais coerentes com o prédio atual. */
   sync(theme: SeasonalTheme = 'none'): void {
     const sim = this.sim;
+    this.externalAgents.setGrid(sim.building.grid);
     const themeChanged = theme !== this.theme;
     this.theme = theme;
     const assetsChanged = this.builtAssetsVersion !== this.assetsVersion || themeChanged;
@@ -421,6 +432,8 @@ export class Renderer {
         if (fs?.front) push(K.FurnFront, f.ay + 0.5, f, vis, s);
       }
     }
+    const externalWorkSpots = [...this.sim.spots.all()].filter((spot) => !this.sim.spots.ownerOf(spot.id));
+    this.externalAgents.update(dt, now, opts.liveliness, externalWorkSpots);
     // os agentes e, na visita, o visitante
     for (const ch of this.sim.people()) {
       const head = this.headOf(ch);
@@ -433,6 +446,18 @@ export class Renderer {
         continue;
       }
       push(K.Char, ch.depth(), ch, null, 1);
+    }
+    for (const ch of this.externalAgents.characters) {
+      const head = this.externalHeadOf(ch);
+      head.visible = false;
+      if (this.sim.visit) continue;
+      if (!visible(ch.x - 24, ch.y - 48, 48, 56)) {
+        head.x = ch.x;
+        head.y = ch.y - 26;
+        head.feetY = ch.y;
+        continue;
+      }
+      push(K.ExternalChar, ch.sortY ?? ch.y, ch, null, 1);
     }
     for (const prop of this.exterior.props) {
       if (!visible(prop.x - 24, prop.y - 56, 48, 60)) continue;
@@ -478,6 +503,9 @@ export class Renderer {
         case K.Char:
           this.drawCharacter(e.ref as Character, now, sel);
           break;
+        case K.ExternalChar:
+          this.drawExternalCharacter(e.ref as ExternalAgentCharacter, now, sel);
+          break;
         case K.Prop:
           this.drawProp(e.ref as ExteriorProp, e.scale);
           break;
@@ -501,7 +529,7 @@ export class Renderer {
       for (const vis of this.areas.values()) {
         if (vis.room && vis.room.phase !== 'ready') continue;
         if (!visible(vis.px.x, vis.px.y, vis.px.w, vis.px.h)) continue;
-        drawSeasonalLights(ctx, this.theme, vis.layout, vis.room ? vis.room.light(now) : 1);
+        drawSeasonalLights(ctx, this.theme, vis.layout, vis.room ? (this.externalOccupantInArea(vis) ? 1 : vis.room.light(now)) : 1);
       }
     }
     // giroflex e balão "!" do alarme de CI (brilham também no escuro)
@@ -528,6 +556,20 @@ export class Renderer {
   private headOf(ch: Character): HeadInfo {
     let h = this.heads.get(ch.id);
     if (!h) this.heads.set(ch.id, (h = { x: 0, y: 0, feetY: 0, visible: false, bx: 0, by: 0, bw: 0, bh: 0, depth: 0 }));
+    return h;
+  }
+
+  externalOccupants(): readonly ExternalAgentCharacter[] {
+    return this.externalAgents.characters;
+  }
+
+  private externalOccupantInArea(area: AreaVis): boolean {
+    return externalAgentsInRect(this.externalAgents.characters, area.layout.rect);
+  }
+
+  private externalHeadOf(ch: ExternalAgentCharacter): HeadInfo {
+    let h = this.externalHeads.get(ch.id);
+    if (!h) this.externalHeads.set(ch.id, (h = { x: 0, y: 0, feetY: 0, visible: false, bx: 0, by: 0, bw: 0, bh: 0, depth: 0 }));
     return h;
   }
 
@@ -795,7 +837,7 @@ export class Renderer {
   /** Tela do monitor: segue a atividade de quem senta ali. */
   deskScreen(f: FurnVis, area: AreaVis): ScreenMode {
     const room = area.room;
-    if (room && room.light(this.sim.now) < 0.3) return 'off';
+    if (room && room.light(this.sim.now) < 0.3 && !this.externalOccupantInArea(area)) return 'off';
     const owner = f.seatSpot ? this.sim.spots.ownerOf(f.seatSpot) : undefined;
     const ch = owner ? this.sim.chars.get(owner) : undefined;
     if (!ch || ch.leaving) return 'off';
@@ -916,6 +958,53 @@ export class Renderer {
       this.particles.popcorn(px, py);
       if (Math.random() < 0.3) this.particles.popcorn(px, py);
     }
+  }
+
+  private drawExternalCharacter(ch: ExternalAgentCharacter, now: number, sel: { agent: string | null; hover: string | null }): void {
+    const { ctx } = this;
+    const head = this.externalHeadOf(ch);
+    const x = Math.round(ch.x);
+    const y = Math.round(ch.y);
+    if (sel.agent === ch.id) this.drawRing(x, y, '#7fe3ff', now, true);
+    else if (sel.hover === ch.id) this.drawRing(x, y, '#ffffff', now, false);
+    const shadow = shadowSprite();
+    ctx.drawImage(shadow.canvas, x - shadow.ax, y - shadow.ay);
+    const req = this.req;
+    req.appearance = ch.appearance;
+    req.dir = ch.dir;
+    req.pose = ch.pose;
+    req.held = ch.held;
+    req.seated = ch.seated;
+    req.costume = seasonalCostume(this.theme, ch.seed);
+    let sprite: Sprite | null = null;
+    try {
+      sprite = this.charSprite(req, ch.animT);
+    } catch {
+      sprite = null;
+    }
+    if (sprite) {
+      const sx = x - sprite.ax;
+      const sy = y - sprite.ay;
+      ctx.drawImage(sprite.canvas, sx, sy);
+      const b = opaqueBounds(sprite.canvas);
+      head.bx = sx + b.x;
+      head.by = sy + b.y;
+      head.bw = b.w;
+      head.bh = b.h;
+      head.y = sy + b.y;
+    } else {
+      head.bx = x - 7;
+      head.by = y - 26;
+      head.bw = 14;
+      head.bh = 26;
+      head.y = y - 26;
+    }
+    head.x = x;
+    head.feetY = y;
+    head.visible = true;
+    head.depth = ch.sortY ?? y;
+    const icon = this.externalAgents.icon(ch, now);
+    if (icon) this.pushIcon(x, head.y - 2, icon, Math.round(Math.sin(now / 220) * 1.5), 1, 0);
   }
 
   private pushIcon(x: number, y: number, name: IconName, bounce: number, alpha: number, badge: number): void {
@@ -1204,7 +1293,7 @@ export class Renderer {
     for (const vis of this.areas.values()) {
       const room = vis.room;
       if (!room || !vis.layout.shade) continue;
-      const light = room.light(now);
+      const light = this.externalOccupantInArea(vis) ? 1 : room.light(now);
       const strength = (room.phase === 'building' ? 0.5 : 0.74) + 0.1 * n;
       // durante a montagem/desmontagem, a escuridão acompanha o piso visível (o pátio não escurece)
       const cover = room.phase === 'building' || room.phase === 'dismantling' ? buildAnim(room.phase, room.progress(now)).floor : 1;

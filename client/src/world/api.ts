@@ -2,6 +2,8 @@
 // Implementação: client/src/world/index.ts -> createWorld().
 // Regra: mudanças aqui devem ser ADITIVAS.
 
+import type { ExternalAgentPresence } from './external-agents';
+
 export type Selection = { type: 'agent'; id: string } | { type: 'room'; id: string } | null;
 
 export interface WorldOptions {
@@ -98,6 +100,8 @@ export interface WorldApi {
    * câmera; ao voltar, a simulação avança o tempo que passou (como com a aba em segundo plano).
    */
   setSuspended?(suspended: boolean): void;
+  /** (Opcional, aditivo) Estados confirmados de agentes externos, desenhados sem criar sessões ou métricas. */
+  setExternalAgentPresence?(presences: readonly ExternalAgentPresence[]): void;
   destroy(): void;
 }
 

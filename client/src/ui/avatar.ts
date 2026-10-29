@@ -1,10 +1,13 @@
 // Avatares dos agentes para a UI: gerados pelo módulo de arte uma única vez e reaproveitados como data URL.
 import { partsKey } from '../../../shared/appearance';
 import type { AgentInfo } from '../../../shared/types';
+import type { ExternalAgent } from '../../../shared/agent-events';
 import { avatarCanvas } from '../art';
+import { EXTERNAL_AGENT_SEEDS } from '../world/external-agents';
 import { h } from './dom';
 
 const cache = new Map<string, { url: string; w: number; h: number }>();
+const externalCache = new Map<string, { url: string; w: number; h: number }>();
 
 type AvatarSource = Pick<AgentInfo, 'seed' | 'look' | 'kind' | 'parts'>;
 
@@ -34,6 +37,18 @@ export function createAvatar(agent: AvatarSource, size: AvatarSize): HTMLElement
 /** Moldura vazia (agente desconhecido); `updateAvatar` preenche depois. */
 export function createAvatarPlaceholder(size: AvatarSize): HTMLElement {
   return h('span', { class: `ui-avatar ui-avatar--${size}`, attrs: { 'aria-hidden': 'true' } });
+}
+
+export function externalAvatarImage(agent: ExternalAgent, scale: number): HTMLImageElement {
+  const key = `${agent}:${scale}`;
+  let data = externalCache.get(key);
+  if (!data) {
+    const canvas = avatarCanvas(EXTERNAL_AGENT_SEEDS[agent], { scale });
+    data = { url: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height };
+    externalCache.set(key, data);
+  }
+  const image = h('img', { attrs: { alt: '', draggable: 'false', decoding: 'async', src: data.url, width: data.w, height: data.h } });
+  return image;
 }
 
 /** Atualiza o avatar só se a aparência (semente, look, peças) mudou. */

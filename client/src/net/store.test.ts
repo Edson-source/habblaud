@@ -93,6 +93,35 @@ describe('OfficeStore: reconexão', () => {
     expect(sources.map((s) => s.closed)).toEqual([true]);
   });
 
+  it('recebe eventos externos validados e deduplica snapshot SSE com eventos ao vivo', () => {
+    const event = {
+      schema_version: 1,
+      event_id: '39b957e3-bb75-40b6-b0d3-c2a36f8f6f57',
+      request_id: 'f78c4d01-ae91-48b4-9cbe-90794ec26757',
+      occurred_at: '2026-10-29T17:00:00Z',
+      source: 'discord',
+      type: 'request_received',
+      agent: 'bmo',
+      summary: 'BMO recebeu uma solicitação.',
+    };
+    const later = {
+      ...event,
+      event_id: '0ac94ecf-c44c-42d7-a531-0b847fc8d847',
+      occurred_at: '2026-10-29T17:00:01Z',
+      type: 'route_decided',
+      target_agent: 'hermes',
+    };
+    const changes: number[] = [];
+    store.on('agentEvents', (fresh) => changes.push(fresh.length));
+    store.connect();
+    last().fire('agent-events', [later]);
+    last().fire('agent-event', event);
+    last().fire('agent-event', later);
+    last().fire('agent-event', { ...event, event_id: 'invalid' });
+    expect(store.agentEvents.map((item) => item.event_id)).toEqual([event.event_id, later.event_id]);
+    expect(changes).toEqual([1, 1]);
+  });
+
   it('religa sozinho com espera crescente quando o navegador desiste do stream', () => {
     const states: string[] = [];
     store.on('connection', (s) => states.push(s));

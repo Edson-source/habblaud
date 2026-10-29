@@ -1,6 +1,7 @@
 // Modelo de apresentação da UI: agrupamento salas -> agentes -> subagentes, filtros, contadores e rótulos.
 // Funções puras (sem DOM), testadas em ui/model.test.ts.
 import type { AccountInfo, Activity, AgentInfo, AgentStatus, OfficeSnapshot, RoomInfo, ShellJob, TaskItem } from '../../../shared/types';
+import type { ExternalAgentPresence } from '../world/external-agents';
 import { formatElapsed, normalizeSearch } from './format';
 import { tr } from '../../../shared/i18n';
 
@@ -63,18 +64,27 @@ export interface Counters {
 }
 
 /** `now` (relógio do servidor) decide quando um comando em primeiro plano já conta como espera. */
-export function computeCounters(snap: Pick<OfficeSnapshot, 'rooms' | 'agents'> | null, now = Date.now()): Counters {
+export function computeCounters(
+  snap: Pick<OfficeSnapshot, 'rooms' | 'agents'> | null,
+  now = Date.now(),
+  externalAgents: readonly ExternalAgentPresence[] = [],
+): Counters {
   const c: Counters = { rooms: 0, agents: 0, working: 0, subagents: 0, waiting: 0, shells: 0 };
-  if (!snap) return c;
-  c.rooms = snap.rooms.length;
-  for (const a of snap.agents) {
-    if (!isPresent(a)) continue;
+  if (snap) {
+    c.rooms = snap.rooms.length;
+    for (const a of snap.agents) {
+      if (!isPresent(a)) continue;
+      c.agents++;
+      const wait = shellWaitIn(a, snap.agents, now);
+      if (wait) c.shells += Math.max(1, wait.jobs.length);
+      else if (a.status === 'working') c.working++;
+      if (a.status === 'waiting') c.waiting++;
+      if (a.kind === 'sub' && a.status !== 'done') c.subagents++;
+    }
+  }
+  for (const agent of externalAgents) {
     c.agents++;
-    const wait = shellWaitIn(a, snap.agents, now);
-    if (wait) c.shells += Math.max(1, wait.jobs.length);
-    else if (a.status === 'working') c.working++;
-    if (a.status === 'waiting') c.waiting++;
-    if (a.kind === 'sub' && a.status !== 'done') c.subagents++;
+    if (agent.status === 'working') c.working++;
   }
   return c;
 }

@@ -5,6 +5,7 @@ import { FALLBACK_MARK } from './icons';
 import { emptyOfficeHint } from './provider';
 import { wordmark } from './widgets';
 import { tr } from '../../../shared/i18n';
+import { EXTERNAL_AGENT_IDS } from '../world/external-agents';
 
 /** Depois de quanto tempo sem conexão o aviso aparece. */
 const DISCONNECTED_BANNER_MS = 8_000;
@@ -105,7 +106,7 @@ export class EmptyState implements UiComponent {
   render(): void {
     const { store } = this.ctx;
     const snap = store.snapshot;
-    const show = officeIsEmpty(this.ctx);
+    const show = officeIsEmpty(this.ctx) && EXTERNAL_AGENT_IDS.length === 0;
     setHidden(this.el, !show);
     if (!show || !snap) return;
     setText(this.hint, emptyOfficeHint(snap.accounts));

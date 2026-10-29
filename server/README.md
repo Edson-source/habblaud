@@ -65,7 +65,8 @@ festa) ou 10 min. Push só avisa. O mesmo CI visto de novo em 2 min não repete 
 
 | Rota | Descrição |
 | --- | --- |
-| `GET /api/stream` | SSE: eventos `snapshot`, `feed`, `notice` (ver `shared/types.ts`); ping a cada 15 s |
+| `GET /api/stream` | SSE: eventos `snapshot`, `feed`, `notice`, `agent-events` e `agent-event`; ping a cada 15 s |
+| `POST /api/agent-events` | (agentes locais) evento v1 autenticado: `{accepted: true, event_id}`; exige bearer token e Host local |
 | `GET /api/snapshot` | `OfficeSnapshot` atual |
 | `GET /api/agents/:id` | `AgentDetail` (histórico de até 200 atividades) |
 | `GET /api/agents/:id/terminal` | SSE do terminal: eventos `init` e `append` (`TerminalMessage`); só com bind local (ver abaixo) |
@@ -91,6 +92,13 @@ festa) ou 10 min. Push só avisa. O mesmo CI visto de novo em 2 min não repete 
 | `GET /api/messages/:id` | (página) situação da mensagem (`OutboxMessage`: `queued` \| `sent` \| `delivered` \| `failed`) |
 | `POST /api/mod/inbox` | (plugin `habblaud-mensagens`) `{session, account?}`: marca a presença da sessão e entrega `{messages: InboxMessage[]}` |
 | `POST /api/mod/inbox/ack` | (plugin) `{session, results: [{id, ok, error?}]}`: confirma cada mensagem entregue (ou a falha) |
+
+`POST /api/agent-events` exige `HABBLAUD_AGENT_EVENTS_TOKEN`; sem a variável, responde `503`. Eventos válidos são enviados ao SSE como `agent-event` e os últimos 100 são incluídos em `agent-events` ao conectar. O endpoint não cria nem altera sessões e não envia dados ao Habblaud World.
+
+O contrato v1 aceita `agent_waiting_shell` (o agente iniciou um shell em segundo plano e aguarda seu resultado)
+e `agent_needs_help` (o próprio agente declarou que precisa de ajuda). Os consumidores devem enviar esses eventos
+apenas quando o estado realmente ocorrer; o segundo não representa um pedido de permissão. Quando os agentes
+integrados não os emitirem, Habblaud não presume esses estados.
 
 O snapshot (SSE e `GET /api/snapshot`) leva só as últimas 8 atividades de cada agente em `recent`; o histórico
 de até 200 (inclusive o começo de transcripts longos, lido em segundo plano) vem de `GET /api/agents/:id`.

@@ -17,6 +17,8 @@ import { RoomRenamer } from './roomrename';
 import { h } from './dom';
 import { Drawer } from './drawer';
 import { FeedPanel } from './feed';
+import { ExternalAgentsPanel } from './external-agents';
+import { deriveExternalAgentPresence } from '../world/external-agents';
 import { HelpDialog } from './help';
 import { HistoryPopover } from './history';
 import { Deliveries } from './deliveries';
@@ -235,6 +237,12 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
   if (typeof location !== 'undefined') openLink(new URL(location.href));
   drawer = new Drawer(ctx, terminal, pty);
   const feed = new FeedPanel(ctx);
+  const externalAgents = new ExternalAgentsPanel(ctx);
+  ctx.openExternalAgents = (agent, opener) => externalAgents.openAgent(agent, opener);
+  const syncExternalAgents = () => world.setExternalAgentPresence?.(deriveExternalAgentPresence(store.agentEvents));
+  syncExternalAgents();
+  store.on('agentEvents', syncExternalAgents);
+  feed.addHeaderButton(externalAgents.button);
   const toasts = new Toasts(ctx);
   const updateToaster = new UpdateToaster(ctx, (n) => toasts.push(n));
   // Habblaud World (em desenvolvimento): a janela própria (botão na barra do topo) e os popups de lançamento, só com
@@ -288,7 +296,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
   const scrim = h('div', { class: 'ui-scrim', attrs: { 'aria-hidden': 'true' }, on: { click: () => ctx.togglePanel('sidebar', false) } });
 
   root.classList.add('ui-root');
-  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, pty.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, popups.el, tip.el, settings.el, worldDialog.el, history.el, deliveries.el, help.el, renamer.el, live, splash.el);
+  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, pty.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, popups.el, tip.el, settings.el, worldDialog.el, history.el, deliveries.el, externalAgents.el, help.el, renamer.el, live, splash.el);
   area = new FreeArea(world, { root, topbar: topbar.el, sidebar: sidebar.el, drawer: drawer.el, feed: feed.el }, () => ({
     sidebar: panels.sidebar,
     feed: panels.feed,
@@ -297,7 +305,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
   }));
   drawer.onLayoutChange = () => applyLayout();
 
-  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, deliveries, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster, worldDialog, popups, worldChip];
+  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, deliveries, feed, externalAgents, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster, worldDialog, popups, worldChip];
   if (scene) components.push(scene);
   root.append(worldSocial.el);
   components.push(worldSocial);
@@ -374,8 +382,11 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
     if (!document.hidden) invalidate();
   }, CLOCK_MS);
   setInterval(() => {
-    // Shells rodando (cronômetro) ou pedido do Codex esperando (prazo de segundos).
-    if (!document.hidden && (hasRunningShells(store.snapshot) || hasCodexPermission(store.snapshot))) invalidate();
+    // Cronômetros de shell/agentes externos e pedidos do Codex com prazo de segundos.
+    const externalActive = deriveExternalAgentPresence(store.agentEvents).some((presence) =>
+      ['receiving', 'routing', 'routed', 'waiting', 'waiting_shell', 'needs_help', 'working'].includes(presence.status),
+    );
+    if (!document.hidden && (hasRunningShells(store.snapshot) || hasCodexPermission(store.snapshot) || externalActive)) invalidate();
   }, SHELL_CLOCK_MS);
 
   addEventListener('keydown', (e) => onKey(e));

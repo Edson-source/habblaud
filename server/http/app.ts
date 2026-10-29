@@ -52,6 +52,8 @@ export interface ApiDeps {
    * terminal e HABBLAUD_MENSAGENS); a trava do Host local é conferida aqui antes de chamá-las.
    */
   messages?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
+  /** Eventos confirmados dos agentes externos: endpoint autenticado e apenas local (`server/http/agent-events.ts`). */
+  agentEvents?: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   /**
    * Terminal interativo e ações nos agentes (/api/pty/*, POST /api/agents/:id/stop|takeover; http/pty.ts).
    * Ausente = desligado (sem HABBLAUD_PTY=1, Docker, sem node-pty ou sem bind local).
@@ -124,6 +126,7 @@ function isLocalOnlyPath(path: string): boolean {
     /^\/api\/permissions\/[^/]+\/wait$/.test(path) ||
     path === '/api/mod/inbox' ||
     path === '/api/mod/inbox/ack' ||
+    path === '/api/agent-events' ||
     path.startsWith('/api/codex/') ||
     path.startsWith('/api/host/')
   );
@@ -487,6 +490,16 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
         sendJson(res, 403, { error: denied(req, tr('eventos do Codex só são aceitos pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
       } else handleCodexEvent(req, res, { live: deps.codexLive, entries: () => accounts.entriesOf('codex') }).catch((err) => fail(res, err));
+      return true;
+    }
+    if (path === '/api/agent-events') {
+      if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!deps.agentEvents) sendJson(res, 503, { error: tr('integração de eventos não configurada') });
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, tr('eventos de agentes só são aceitos pelo próprio computador')) });
+      } else {
+        deps.agentEvents(req, res).catch((err) => fail(res, err));
+      }
       return true;
     }
     if (path === '/api/spawn' || path.startsWith('/api/spawn/')) {

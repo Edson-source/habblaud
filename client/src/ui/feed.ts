@@ -27,6 +27,7 @@ export class FeedPanel implements UiComponent {
   private newPill: HTMLButtonElement;
   private ticker: HTMLElement;
   private toggleBtn: HTMLButtonElement;
+  private head: HTMLElement;
   private empty: HTMLElement;
   private filterNote: HTMLElement;
   /** Aparência/conta dos agentes com eventos guardados (o feed sobrevive à saída do agente). */
@@ -49,16 +50,17 @@ export class FeedPanel implements UiComponent {
       this.scrolledUp = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 24;
       if (!this.scrolledUp && !this.hovering) this.flushSoon();
     });
+    this.head = h(
+      'div',
+      { class: 'ui-feed__head' },
+      h('button', { class: 'ui-feed__title', type: 'button', on: { click: () => ctx.togglePanel('feed') } }, h('h2', { text: tr('Atividade') }), this.filterNote, this.ticker),
+      this.newPill,
+      this.toggleBtn,
+    );
     this.el = h(
       'section',
       { class: 'ui-panel ui-feed', attrs: { 'aria-label': tr('Feed de atividade'), id: 'ui-feed' } },
-      h(
-        'div',
-        { class: 'ui-feed__head' },
-        h('button', { class: 'ui-feed__title', type: 'button', on: { click: () => ctx.togglePanel('feed') } }, h('h2', { text: tr('Atividade') }), this.filterNote, this.ticker),
-        this.newPill,
-        this.toggleBtn,
-      ),
+      this.head,
       scroller,
     );
     // Pausa a rolagem enquanto o mouse está sobre a lista.
@@ -88,6 +90,10 @@ export class FeedPanel implements UiComponent {
       }]);
       ctx.invalidate();
     });
+  }
+
+  addHeaderButton(button: HTMLElement): void {
+    this.head.insertBefore(button, this.toggleBtn);
   }
 
   render(): void {

@@ -1,8 +1,9 @@
 // Gaveta de detalhes (direita): agente ou sala selecionados. Agente do Codex: selo "Codex", textos dele (onde
 // responder, o terminal, a aprovação no lugar do modo de permissão, sem custo) e a dica dos hooks do Codex.
 import type { Activity, AgentInfo, FeedItem, RoomInfo, ShellJob, TaskItem } from '../../../shared/types';
+import type { AgentEvent, ExternalAgent } from '../../../shared/agent-events';
 import { roomTheme } from '../art';
-import { createAvatarPlaceholder, updateAvatar } from './avatar';
+import { createAvatarPlaceholder, externalAvatarImage, updateAvatar } from './avatar';
 import { CharacterEditor } from './character-editor';
 import { MessageComposer } from './composer';
 import type { UiComponent, UiContext } from './context';
@@ -44,7 +45,7 @@ import { canRenameRoom } from './roomrename';
 import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf } from './provider';
 import { ptyControllable } from './ptyapi';
 import { createAgentRow, updateAgentRow } from './rows';
-import { SocialSection } from './social';
+import { coinDelta, SocialSection } from './social';
 import { TERMINAL_UNAVAILABLE_HINT, type TerminalControl } from './terminal';
 import { Movable } from './movable';
 import type { PtyControl } from './pty';
@@ -60,6 +61,14 @@ import {
   updateStatusDot,
 } from './widgets';
 import { tr } from '../../../shared/i18n';
+import {
+  deriveExternalAgentPresence,
+  externalAgentCompletionEvents,
+  externalAgentFromId,
+  externalAgentName,
+  EXTERNAL_TASK_REWARD_COINS,
+} from '../world/external-agents';
+import { ExternalAgentWallet, externalAgentStatusLabel } from './external-agents';
 
 /** Itens da linha do tempo mostrados de início; "Mostrar mais" acrescenta outro tanto. */
 const TIMELINE_STEP = 15;
@@ -952,14 +961,201 @@ class RoomView {
   }
 }
 
+const EXTERNAL_SOCIAL: Record<ExternalAgent, {
+  hobbies: readonly { emoji: string; label: () => string }[];
+  catchphrase: () => string;
+  friends: readonly ExternalAgent[];
+  rivals: readonly ExternalAgent[];
+}> = {
+  bmo: {
+    hobbies: [{ emoji: '🎮', label: () => tr('Jogos') }, { emoji: '🔌', label: () => tr('Microcontroladores') }],
+    catchphrase: () => tr('Bip! Pronto para ajudar.'),
+    friends: ['hermes'],
+    rivals: ['claw'],
+  },
+  hermes: {
+    hobbies: [{ emoji: '📚', label: () => tr('Leitura') }, { emoji: '🔎', label: () => tr('Pesquisa') }],
+    catchphrase: () => tr('Tudo está nos registros.'),
+    friends: ['bmo'],
+    rivals: ['claw'],
+  },
+  claw: {
+    hobbies: [{ emoji: '☕', label: () => tr('Café') }, { emoji: '♟️', label: () => tr('Estratégia') }],
+    catchphrase: () => tr('Pinça à obra!'),
+    friends: ['hermes'],
+    rivals: ['bmo'],
+  },
+};
+const EXTERNAL_SOURCES: Record<AgentEvent['source'], () => string> = {
+  terminal: () => tr('Terminal'),
+  discord: () => tr('Discord'),
+  esp: () => tr('ESP'),
+};
+
+class ExternalAgentView {
+  readonly el: HTMLElement;
+  private agent: ExternalAgent = 'bmo';
+  private avatar: HTMLElement;
+  private name: HTMLElement;
+  private status: HTMLElement;
+  private latest: HTMLElement;
+  private events: HTMLOListElement;
+  private follow: HTMLButtonElement;
+  private socialExtra: HTMLElement;
+  private socialCoins: HTMLElement;
+  private socialEarned: HTMLElement;
+  private socialTraits: HTMLElement;
+  private socialPhrase: HTMLElement;
+  private socialFriends: HTMLElement;
+  private socialRivals: HTMLElement;
+  private socialFriendsRow: HTMLElement;
+  private socialRivalsRow: HTMLElement;
+  private socialLedger: HTMLOListElement;
+  private socialLedgerBox: HTMLDetailsElement;
+  private wallet: ExternalAgentWallet;
+
+  constructor(private readonly ctx: UiContext) {
+    this.avatar = h('span', { class: 'ui-ext-profile__avatar', attrs: { 'aria-hidden': 'true' } });
+    this.avatar.append(externalAvatarImage(this.agent, 3));
+    this.name = h('h2', { class: 'ui-hero__name' });
+    const subtitle = h('span', { class: 'ui-role', text: tr('Agente integrado') });
+    this.status = h('p', { class: 'ui-ext-profile__status' });
+    this.latest = h('p', { class: 'ui-ext-profile__latest' });
+    this.events = h('ol', { class: 'ui-ext-profile__events' });
+    this.socialExtra = h('span', { class: 'ui-sec__extra ui-social__balance' });
+    this.socialCoins = h('strong', { class: 'ui-social__coins' });
+    this.socialEarned = h('span', { class: 'ui-social__earned' });
+    this.socialTraits = h('div', { class: 'ui-social__traits' });
+    this.socialPhrase = h('p', { class: 'ui-social__phrase' });
+    this.socialFriends = h('span', { class: 'ui-social__names' });
+    this.socialRivals = h('span', { class: 'ui-social__names' });
+    this.socialFriendsRow = h('p', { class: 'ui-social__bond' }, h('span', { class: 'ui-social__bond-label', text: tr('💛 Amizades') }), this.socialFriends);
+    this.socialRivalsRow = h('p', { class: 'ui-social__bond' }, h('span', { class: 'ui-social__bond-label', text: tr('⚔️ Rivalidades') }), this.socialRivals);
+    this.socialLedger = h('ol', { class: 'ui-social__ledger' });
+    this.socialLedgerBox = h('details', { class: 'ui-social__extract' }, h('summary', { text: tr('Extrato') }), this.socialLedger);
+    this.wallet = new ExternalAgentWallet();
+    const social = h(
+      'section',
+      { class: 'ui-sec ui-social' },
+      h('div', { class: 'ui-sec__head' }, h('h3', { class: 'ui-sec__title', text: tr('Vida social') }), this.socialExtra),
+      h('div', { class: 'ui-social__wallet' },
+        h('span', { class: 'ui-social__purse', attrs: { 'aria-hidden': 'true' }, text: '🪙' }),
+        h('div', { class: 'ui-social__wallet-body' },
+          h('div', { class: 'ui-social__wallet-line' }, this.socialCoins),
+          this.socialEarned,
+        ),
+      ),
+      this.socialTraits,
+      this.socialPhrase,
+      this.socialFriendsRow,
+      this.socialRivalsRow,
+      this.socialLedgerBox,
+      h('p', { class: 'ui-ext-profile__note', text: tr('Perfil social e hobbies são cosméticos; o saldo local recebe 10 moedinhas por conclusão confirmada.') }),
+    );
+    this.follow = h('button', { class: 'ui-btn', type: 'button', on: { click: () => this.toggleFollow() } }, h('span', { text: tr('Seguir') }));
+    this.follow.innerHTML = `${ICONS.follow}<span>${tr('Seguir')}</span>`;
+    const center = h('button', { class: 'ui-btn', type: 'button', on: { click: () => ctx.focusSelection() } });
+    center.innerHTML = `${ICONS.center}<span>${tr('Centralizar')}</span>`;
+    const hero = h('div', { class: 'ui-ext-profile__hero' }, this.avatar, h('div', { class: 'ui-hero__text' }, h('div', { class: 'ui-hero__line' }, this.name, subtitle), h('div', { class: 'ui-ext-profile__state' }, this.status), h('div', { class: 'ui-status__actions' }, this.follow, center)));
+    this.el = h(
+      'div',
+      { class: 'ui-ext-profile' },
+      hero,
+      h('section', { class: 'ui-sec' }, h('h3', { class: 'ui-sec__title', text: tr('Agora') }), this.latest),
+      social,
+      h('section', { class: 'ui-sec' }, h('h3', { class: 'ui-sec__title', text: tr('Registro do agente') }), this.events),
+      h('p', { class: 'ui-ext-profile__note', text: tr('Estado operacional baseado nos eventos confirmados; permissões e sessões não são presumidas.') }),
+    );
+  }
+
+  open(agent: ExternalAgent): void {
+    this.agent = agent;
+    this.avatar.replaceChildren(externalAvatarImage(agent, 3));
+    setText(this.name, externalAgentName(agent));
+  }
+
+  toggleFollow(): void {
+    const followSelected = !this.ctx.world.getOptions().followSelected;
+    this.ctx.world.setOptions({ followSelected });
+    this.ctx.focusSelection();
+    this.ctx.invalidate();
+  }
+
+  render(): void {
+    const presence = deriveExternalAgentPresence(this.ctx.store.agentEvents).find((item) => item.agent === this.agent);
+    if (!presence) return;
+    const status = externalAgentStatusLabel(presence.status);
+    setText(this.status, status);
+    this.status.dataset.status = presence.status;
+    setText(this.latest, presence.lastEvent
+      ? `${formatClock(Date.parse(presence.lastEvent.occurred_at))} · ${presence.lastEvent.summary}`
+      : status);
+    const following = this.ctx.world.getOptions().followSelected;
+    setAttr(this.follow, 'aria-pressed', String(following));
+    this.follow.classList.toggle('is-on', following);
+    const allEvents = this.ctx.store.agentEvents;
+    const requestIds = new Set(
+      allEvents
+        .filter((event) => event.agent === this.agent || event.target_agent === this.agent)
+        .map((event) => event.request_id),
+    );
+    const entries = allEvents
+      .filter((event) => requestIds.has(event.request_id))
+      .slice(-20)
+      .reverse();
+    this.renderSocial(allEvents, this.ctx.now());
+    this.events.replaceChildren(...entries.map((event) =>
+      h('li', { class: `ui-ext-profile__event is-${event.type.replaceAll('_', '-')}` },
+        h('time', { text: formatClock(Date.parse(event.occurred_at)), attrs: { datetime: event.occurred_at } }),
+        h('span', { text: `${EXTERNAL_SOURCES[event.source]()} · ${event.summary}` }),
+      ),
+    ));
+  }
+
+  private renderSocial(allEvents: readonly AgentEvent[], now: number): void {
+    const profile = EXTERNAL_SOCIAL[this.agent];
+    this.wallet.sync(allEvents);
+    const completions = externalAgentCompletionEvents(allEvents, this.agent);
+    const earned = this.wallet.balance(this.agent);
+    setText(this.socialExtra, `🪙 ${earned}`);
+    setText(this.socialCoins, tr('{0} moedinhas', [earned]));
+    setText(this.socialEarned, tr('{0} ganhos trabalhando', [coinDelta(earned)]));
+    this.socialTraits.replaceChildren(...profile.hobbies.map((hobby) =>
+      h('span', { class: 'ui-trait', text: `${hobby.emoji} ${hobby.label()}` }),
+    ));
+    setText(this.socialPhrase, tr('Bordão: “{0}”', [profile.catchphrase()]));
+    const relation = (agent: ExternalAgent) => h('button', {
+      class: 'ui-social__name',
+      type: 'button',
+      text: externalAgentName(agent),
+      title: tr('Abrir ficha de {0}', [externalAgentName(agent)]),
+      on: { click: () => this.ctx.select({ type: 'agent', id: `external:${agent}` }, { focus: true }) },
+    });
+    this.socialFriends.replaceChildren(...profile.friends.map(relation));
+    this.socialRivals.replaceChildren(...profile.rivals.map(relation));
+    setHidden(this.socialFriendsRow, profile.friends.length === 0);
+    setHidden(this.socialRivalsRow, profile.rivals.length === 0);
+    const ledger = completions.slice(-6).reverse();
+    this.socialLedger.replaceChildren(...ledger.map((event) =>
+      h('li', { class: 'ui-social__entry is-plus' },
+        h('span', { class: 'ui-social__delta', text: coinDelta(EXTERNAL_TASK_REWARD_COINS) }),
+        h('span', { class: 'ui-social__what', text: `✅ ${tr('Tarefa concluída: {0}', [event.summary])}` }),
+        h('time', { class: 'ui-social__when', text: relativeTime(Date.parse(event.occurred_at), now) }),
+      ),
+    ));
+    setHidden(this.socialLedgerBox, ledger.length === 0);
+  }
+}
+
 // ---------------------------------------------------------------- gaveta
 
 export class Drawer implements UiComponent {
   readonly el: HTMLElement;
   private body: HTMLElement;
   private agentView: AgentView;
+  private externalAgentView: ExternalAgentView;
   private roomView: RoomView;
-  private mode: 'agent' | 'room' | null = null;
+  private mode: 'agent' | 'external' | 'room' | null = null;
   private heading: HTMLElement;
   private movable: Movable;
   /** Avisado quando a gaveta é solta ou volta ao lugar (a área livre do escritório muda). */
@@ -971,6 +1167,7 @@ export class Drawer implements UiComponent {
     pty: PtyControl,
   ) {
     this.agentView = new AgentView(ctx, terminal, pty);
+    this.externalAgentView = new ExternalAgentView(ctx);
     this.roomView = new RoomView(ctx, pty);
     this.heading = h('span', { class: 'ui-drawer__kind' });
     const close = iconButton(ICONS.close, tr('Fechar detalhes (Esc)'), () => ctx.select(null));
@@ -998,26 +1195,34 @@ export class Drawer implements UiComponent {
 
   toggleFollow(): void {
     if (this.mode === 'agent') this.agentView.toggleFollow();
+    else if (this.mode === 'external') this.externalAgentView.toggleFollow();
   }
 
   render(): void {
     const sel = this.ctx.selection();
-    const mode = sel?.type ?? null;
+    const mode = sel?.type === 'agent' && externalAgentFromId(sel.id) ? 'external' : sel?.type ?? null;
     if (mode !== this.mode) {
       // Gaveta fechada ou fora do agente: o editor fecha, e ao reabrir começa do estado atual do agente.
       if (this.mode === 'agent') this.agentView.character.close();
       this.mode = mode;
-      this.body.replaceChildren(...(mode === 'agent' ? [this.agentView.el] : mode === 'room' ? [this.roomView.el] : []));
+      this.body.replaceChildren(...(mode === 'agent' ? [this.agentView.el] : mode === 'external' ? [this.externalAgentView.el] : mode === 'room' ? [this.roomView.el] : []));
       this.body.scrollTop = 0;
       this.el.classList.toggle('is-open', mode !== null);
       setAttr(this.el, 'aria-hidden', mode ? 'false' : 'true');
       this.el.inert = mode === null;
     }
     if (sel?.type === 'agent') {
-      if (this.agentView.agentId !== sel.id) this.body.scrollTop = 0;
-      this.agentView.open(sel.id);
-      setText(this.heading, this.ctx.agent(sel.id)?.kind === 'sub' ? tr('Subagente') : tr('Agente'));
-      this.agentView.render();
+      const externalAgent = externalAgentFromId(sel.id);
+      if (externalAgent) {
+        this.externalAgentView.open(externalAgent);
+        setText(this.heading, tr('Agente integrado'));
+        this.externalAgentView.render();
+      } else {
+        if (this.agentView.agentId !== sel.id) this.body.scrollTop = 0;
+        this.agentView.open(sel.id);
+        setText(this.heading, this.ctx.agent(sel.id)?.kind === 'sub' ? tr('Subagente') : tr('Agente'));
+        this.agentView.render();
+      }
     } else if (sel?.type === 'room') {
       if (this.roomView.roomId !== sel.id) this.body.scrollTop = 0;
       this.roomView.open(sel.id);

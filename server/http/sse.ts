@@ -3,11 +3,13 @@
 // Snapshots saem com throttle (~200 ms); feed e avisos vão em lote logo depois do snapshot.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { OfficeSnapshot } from '../../shared/types';
+import type { AgentEvent } from '../../shared/agent-events';
 import type { Office } from '../model/office';
 import { isLoopbackHost } from './guard';
 
 /** Cliente lento demais (buffer acumulado acima disto) é desconectado; o EventSource reconecta. */
 const MAX_BUFFERED = 8 * 1024 * 1024;
+const MAX_AGENT_EVENTS = 100;
 
 export class Hub {
   private clients = new Set<ServerResponse>();
@@ -18,6 +20,7 @@ export class Hub {
   private lastFlush = 0;
   private unsubscribe: (() => void) | null = null;
   private snapshotCbs = new Set<(snap: OfficeSnapshot) => void>();
+  private agentEvents: AgentEvent[] = [];
   private readonly throttleMs: number;
   private readonly pingMs: number;
   /** Quem pode responder pelo escritório; padrão: Host local. A porta remota (http/remote.ts) troca a regra. */
@@ -66,7 +69,7 @@ export class Hub {
     return n;
   }
 
-  /** Conecta um cliente: snapshot completo + últimos 50 itens do feed, depois o fluxo ao vivo. */
+  /** Conecta um cliente: snapshot, feed e eventos externos recentes, depois o fluxo ao vivo. */
   attach(req: IncomingMessage, res: ServerResponse): void {
     req.socket.setTimeout(0);
     req.socket.setNoDelay(true);
@@ -80,6 +83,7 @@ export class Hub {
     res.write('retry: 2000\n\n');
     res.write(frame('snapshot', snapshot));
     res.write(frame('feed', this.office.recentFeed(50)));
+    res.write(frame('agent-events', this.agentEvents.slice()));
     this.clients.add(res);
     if (this.canAnswer(req)) this.local.add(res);
     const drop = () => this.clients.delete(res);
@@ -112,6 +116,17 @@ export class Hub {
   /** Snapshot atual (depois de transmitir o que estiver pendente), com `serverTime` de agora. */
   current(): OfficeSnapshot {
     return { ...this.flush(), serverTime: Date.now() };
+  }
+
+  recentAgentEvents(): AgentEvent[] {
+    return this.agentEvents.slice();
+  }
+
+  /** Mantém os eventos externos recentes para clientes SSE sem misturá-los às sessões do Claude/Codex. */
+  publishAgentEvent(event: AgentEvent): void {
+    this.agentEvents.push(event);
+    if (this.agentEvents.length > MAX_AGENT_EVENTS) this.agentEvents.shift();
+    this.writeAll(frame('agent-event', event));
   }
 
   private schedule(): void {

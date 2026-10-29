@@ -11,6 +11,7 @@ import { BUILDING_H, COL_W, CORRIDOR_H, CORRIDOR_Y } from '../constants';
 import type { ExteriorLayout, SlotShell } from '../layout/exterior';
 import type { RoomState } from '../sim/room-state';
 import type { Sim } from '../sim/sim';
+import { externalAgentsInRect } from '../external-agents';
 import { buildAnim } from './anim';
 import { ambientAt, ambientDistance, approachAmbient, effectiveHour, isNeutral, mixRgb, rgbCss, sunbeamAt, WHITE, type Ambient, type DaylightMode, type Rgb } from './daylight';
 import { glowSprite } from './props';
@@ -33,6 +34,7 @@ const FIREFLIES = 26;
 /** O que a iluminação precisa do renderer (satisfeito pelo próprio Renderer). */
 export interface LightScene {
   readonly areas: ReadonlyMap<string, AreaVis>;
+  externalOccupants(): readonly { tx: number; ty: number }[];
   readonly exterior: ExteriorLayout;
   readonly shells: readonly SlotShell[];
   readonly shellWindows: readonly WallVis[];
@@ -239,7 +241,7 @@ export class Lighting {
       this.occAt = now;
       for (const vis of scene.areas.values()) {
         if (vis.room || !this.presenceLit(vis)) continue;
-        this.coreBusy.set(vis.id, this.someoneIn(vis.layout.rect));
+        this.coreBusy.set(vis.id, this.someoneIn(vis.layout.rect, scene));
       }
     }
     const k = this.reduced ? 1 : Math.min(1, dt * 3.5);
@@ -256,20 +258,20 @@ export class Lighting {
     return kind === 'cafe' || kind === 'lounge' || kind === 'restroom';
   }
 
-  private someoneIn(r: { x: number; y: number; w: number; h: number }): boolean {
+  private someoneIn(r: { x: number; y: number; w: number; h: number }, scene: LightScene): boolean {
     for (const c of this.sim.chars.values()) {
       if (c.gone || c.inside) continue;
       if (c.tx >= r.x && c.ty >= r.y && c.tx < r.x + r.w && c.ty < r.y + r.h) return true;
     }
-    return false;
+    return externalAgentsInRect(scene.externalOccupants(), r);
   }
 
   /** Luz (0..1) e cobertura (montagem/desmontagem) de uma área. */
-  private areaLight(vis: AreaVis, now: number): { lit: number; cover: number } {
+  private areaLight(vis: AreaVis, now: number, scene: LightScene): { lit: number; cover: number } {
     const room = vis.room;
     if (room) {
       const cover = room.phase === 'building' || room.phase === 'dismantling' ? buildAnim(room.phase, room.progress(now)).floor : 1;
-      return { lit: room.light(now), cover };
+      return { lit: externalAgentsInRect(scene.externalOccupants(), vis.layout.rect) ? 1 : room.light(now), cover };
     }
     if (this.presenceLit(vis)) return { lit: this.coreLevel.get(vis.id) ?? 0, cover: 1 };
     return { lit: 1, cover: 1 };
@@ -322,7 +324,7 @@ export class Lighting {
     const a = this.ambient;
     let k = `${Math.round(a.night * 200)}|${a.outside.join(',')}|${a.inside.join(',')}|${a.dim.join(',')}|${this.sim.building.cols}`;
     for (const vis of scene.areas.values()) {
-      const { lit, cover } = this.areaLight(vis, now);
+      const { lit, cover } = this.areaLight(vis, now, scene);
       k += `|${vis.id}:${Math.round(lit * 24)}:${Math.round(cover * 20)}`;
     }
     for (const sh of scene.shells) if (scene.roomInSlot(sh.slot)) k += `|s${sh.slot}`;
@@ -350,7 +352,7 @@ export class Lighting {
     }
     const lit = new Map<AreaVis, number>();
     for (const vis of scene.areas.values()) {
-      const l = this.areaLight(vis, now);
+      const l = this.areaLight(vis, now, scene);
       if (l.cover <= 0.01) continue;
       // quanto de luz a área "irradia" (janelas): salas pela luz, áreas comuns vazias na penumbra
       lit.set(vis, vis.room ? l.lit * l.cover : this.presenceLit(vis) ? 0.4 + 0.6 * l.lit : 1);

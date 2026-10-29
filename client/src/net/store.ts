@@ -6,6 +6,7 @@
 // ex.: servidor reiniciando atrás de um proxy), tenta de novo com espera crescente.
 import type { AppearanceParts } from '../../../shared/appearance';
 import type { Activity, AgentDetail, AgentInfo, FeedItem, Notice, OfficeSnapshot, OutboxMessage, PermissionDecision, PermissionRequestInfo, RoomInfo } from '../../../shared/types';
+import { isAgentEvent, type AgentEvent } from '../../../shared/agent-events';
 import { DemoSimulator } from '../../../shared/demo/simulator';
 import { tr } from '../../../shared/i18n';
 
@@ -14,6 +15,8 @@ export type ConnectionState = 'connecting' | 'open' | 'closed' | 'mock';
 export interface StoreEvents {
   snapshot: OfficeSnapshot;
   feed: FeedItem[];
+  /** Eventos confirmados dos agentes externos; não fazem parte do snapshot/sessões do escritório. */
+  agentEvents: AgentEvent[];
   notice: Notice;
   connection: ConnectionState;
   /** O servidor está servindo outro build do cliente: esta página está desatualizada. Emitido uma vez. */
@@ -50,6 +53,7 @@ export interface StoreOptions {
 }
 
 const FEED_LIMIT = 200;
+const AGENT_EVENT_LIMIT = 100;
 /** EventSource.CLOSED (constante literal: o EventSource não existe no Node dos testes). */
 const ES_CLOSED = 2;
 /** Espera entre tentativas de reconexão: 2 s, 4 s, 8 s… até 30 s. */
@@ -87,6 +91,8 @@ export class OfficeStore {
   snapshot: OfficeSnapshot | null = null;
   /** Feed global, do mais antigo para o mais recente. */
   feed: FeedItem[] = [];
+  /** Eventos externos confirmados, separados do escritório e limitados ao buffer do servidor. */
+  agentEvents: AgentEvent[] = [];
   connection: ConnectionState = 'connecting';
   readonly mock: boolean;
 
@@ -94,6 +100,7 @@ export class OfficeStore {
   private listeners = new Map<keyof StoreEvents, Set<(value: any) => void>>();
   private agentIndex = new Map<string, AgentInfo>();
   private roomIndex = new Map<string, RoomInfo>();
+  private agentEventIds = new Set<string>();
   private source: EventSourceLike | null = null;
   private mockTimer: ReturnType<typeof setInterval> | null = null;
   private readonly search: string;
@@ -412,6 +419,30 @@ export class OfficeStore {
     this.emit('feed', fresh);
   }
 
+  private applyAgentEvents(raw: unknown): void {
+    if (!Array.isArray(raw)) {
+      console.warn('[store] lista de eventos externos inválida ignorada');
+      return;
+    }
+    const fresh: AgentEvent[] = [];
+    for (const item of raw) {
+      if (!isAgentEvent(item)) {
+        console.warn('[store] evento externo inválido ignorado');
+        continue;
+      }
+      if (!this.agentEventIds.has(item.event_id)) {
+        fresh.push(item);
+        this.agentEventIds.add(item.event_id);
+      }
+    }
+    if (!fresh.length) return;
+    this.agentEvents = [...this.agentEvents, ...fresh]
+      .sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at))
+      .slice(-AGENT_EVENT_LIMIT);
+    this.agentEventIds = new Set(this.agentEvents.map((event) => event.event_id));
+    this.emit('agentEvents', fresh);
+  }
+
   /** Lê o JSON de um evento SSE; mensagens corrompidas são ignoradas sem derrubar o stream. */
   private parse<T>(ev: Event, what: string): T | null {
     try {
@@ -468,6 +499,16 @@ export class OfficeStore {
       if (!current()) return;
       const n = this.parse<Notice>(ev, 'aviso');
       if (n) this.emit('notice', n);
+    });
+    es.addEventListener('agent-events', (ev) => {
+      if (!current()) return;
+      const events = this.parse<unknown>(ev, 'eventos externos');
+      if (events !== null) this.applyAgentEvents(events);
+    });
+    es.addEventListener('agent-event', (ev) => {
+      if (!current()) return;
+      const event = this.parse<unknown>(ev, 'evento externo');
+      if (event !== null) this.applyAgentEvents([event]);
     });
   }
 

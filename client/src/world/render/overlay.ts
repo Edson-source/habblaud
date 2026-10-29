@@ -10,6 +10,7 @@ import type { Camera } from '../camera';
 import { COL_W, CORRIDOR_Y, SOUTH_Y } from '../constants';
 import type { Character } from '../sim/character';
 import { shellAgeKey, shellBubbleAlpha, shellBubbleText, STORM_LIFT, unitHash } from '../sim/shell';
+import { externalAgentBubbleText } from '../external-agents';
 import type { Sim } from '../sim/sim';
 import { buildAnim } from './anim';
 import { drawFxBanner } from './github-fx';
@@ -360,9 +361,89 @@ export class Overlay {
       if (it.type === 'bubble') this.drawBubble(it, now);
       else this.drawLabel(it, sel);
     }
+    this.drawExternalBubbles(now, opts, zoom);
+    if (showAll) this.drawExternalLabels();
     this.drawChats(now);
     this.drawFloaters(now);
     ctx.textBaseline = 'alphabetic';
+  }
+
+  private drawExternalLabels(): void {
+    const { ctx } = this;
+    ctx.save();
+    const font = '12px "Pixelify Sans", monospace';
+    ctx.font = font;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const character of this.renderer.externalAgents.characters) {
+      const head = this.renderer.externalHeads.get(character.id);
+      if (!head?.visible) continue;
+      const text = this.renderer.externalAgents.label(character.agent);
+      const w = Math.ceil(this.measure(font, text)) + 12;
+      const x = Math.round(this.sx(head.x) - w / 2);
+      const y = Math.round(this.sy(head.y) - 19);
+      if (x + w < 0 || x > this.camera.viewW || y + 18 < 0 || y > this.camera.viewH) continue;
+      if (this.overlaps(x, y, w, 18)) continue;
+      this.place(x, y, w, 18);
+      ctx.fillStyle = 'rgba(24, 35, 48, 0.9)';
+      ctx.strokeStyle = '#7fe3ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, 18, 5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(text, x + w / 2, y + 9);
+    }
+    ctx.restore();
+  }
+
+  private drawExternalBubbles(now: number, opts: WorldOptions, zoom: number): void {
+    if (opts.bubbles === 'none' || zoom < TINY_ZOOM) return;
+    const { ctx } = this;
+    ctx.save();
+    ctx.font = BUBBLE_FONT;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (const character of this.renderer.externalAgents.characters) {
+      const event = character.presence.lastEvent;
+      const head = this.renderer.externalHeads.get(character.id);
+      if (!event || !head?.visible) continue;
+      const age = now - Date.parse(event.occurred_at);
+      const active = ['receiving', 'routing', 'routed', 'waiting', 'waiting_shell', 'needs_help', 'working'].includes(character.presence.status);
+      if (!active && (age < 0 || age >= RECENT_MS)) continue;
+      const alpha = active ? 1 : Math.min(1, age / 150, (RECENT_MS - age) / 500);
+      if (alpha <= 0.01) continue;
+      const message = externalAgentBubbleText(character.presence).trim();
+      if (!message) continue;
+      const text = this.fit(BUBBLE_FONT, message, BUBBLE_MAX_W - 30);
+      const w = Math.round(Math.min(BUBBLE_MAX_W, this.measure(BUBBLE_FONT, text) + 26));
+      const h = BUBBLE_H;
+      const headX = this.sx(head.x);
+      const headY = this.sy(head.y);
+      const x = Math.max(4, Math.min(this.camera.viewW - w - 4, Math.round(headX - w / 2)));
+      let y = Math.round(headY - 30);
+      for (let attempt = 0; attempt < 3 && this.overlaps(x, y, w, h); attempt++) y -= h + 5;
+      if (this.overlaps(x, y, w, h)) continue;
+      this.place(x, y, w, h);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(238, 248, 255, 0.96)';
+      ctx.strokeStyle = '#7fe3ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 6);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(headX - 4, y + h - 1);
+      ctx.lineTo(headX, y + h + 4);
+      ctx.lineTo(headX + 4, y + h - 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#243343';
+      ctx.fillText(text, x + 8, y + h / 2 + 0.5);
+    }
+    ctx.restore();
   }
 
   /** Quem senta virado para a câmera atrás de uma mesa: a etiqueta nos pés cobriria a tela do colega. */

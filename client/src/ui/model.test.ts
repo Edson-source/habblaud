@@ -74,6 +74,15 @@ describe('computeCounters', () => {
     expect(computeCounters(snap)).toEqual({ rooms: 3, agents: 6, working: 3, subagents: 2, waiting: 2, shells: 0 });
     expect(computeCounters(null)).toEqual({ rooms: 0, agents: 0, working: 0, subagents: 0, waiting: 0, shells: 0 });
   });
+  it('soma agentes integrados aos totais sem presumir trabalho sem evento confirmado', () => {
+    const external = [
+      { agent: 'bmo', status: 'unknown' },
+      { agent: 'hermes', status: 'working' },
+      { agent: 'claw', status: 'waiting' },
+    ] as const;
+    expect(computeCounters(null, NOW, external)).toEqual({ rooms: 0, agents: 3, working: 1, subagents: 0, waiting: 0, shells: 0 });
+    expect(computeCounters(snap, NOW, external)).toEqual({ rooms: 3, agents: 9, working: 4, subagents: 2, waiting: 2, shells: 0 });
+  });
   it('waitingAgents ordena por quem espera há mais tempo', () => {
     expect(waitingAgents(agents).map((a) => a.id)).toEqual(['ana', 'marina']);
   });

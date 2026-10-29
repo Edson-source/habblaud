@@ -1,5 +1,6 @@
 // Contexto compartilhado entre os componentes da interface.
 import type { AccountInfo, AgentInfo } from '../../../shared/types';
+import type { ExternalAgent } from '../../../shared/agent-events';
 import type { OfficeStore } from '../net/store';
 import type { Selection, WorldApi } from '../world/api';
 import type { UiPrefs } from './prefs';
@@ -64,6 +65,8 @@ export interface UiContext {
   /** Anuncia um texto para leitores de tela. */
   announce(text: string): void;
   focusSearch(): void;
+  /** Abre os detalhes existentes de um agente integrado. */
+  openExternalAgents?(agent: ExternalAgent, opener?: HTMLElement): void;
   /** Abre a ajuda; com `section`, rola até ela (ex.: "usage" = Contas e uso). */
   openHelp(section?: HelpSection): void;
   toggleSettings(): void;
