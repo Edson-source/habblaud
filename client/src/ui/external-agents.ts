@@ -15,7 +15,13 @@ import { formatClock } from './format';
 import { ICONS } from './icons';
 import { tr } from '../../../shared/i18n';
 
-const AVATARS: Record<ExternalAgent, string> = { bmo: '🤖', hermes: '📚', claw: '🦀' };
+const AVATARS: Record<ExternalAgent, string> = { bmo: '🤖', hermes: '📚', argus: '🛡️', claw: '🦀' };
+const ROLE_LABELS: Record<ExternalAgent, () => string> = {
+  bmo: () => tr('Orquestração'),
+  hermes: () => tr('Conhecimento e pesquisa'),
+  argus: () => tr('Monitoramento somente de leitura'),
+  claw: () => tr('Execução de ações autorizadas'),
+};
 const STATUS_LABELS: Record<ExternalAgentStatus, () => string> = {
   unknown: () => tr('Sem evento confirmado'),
   receiving: () => tr('Recebeu uma solicitação'),
@@ -54,7 +60,7 @@ const WALLET_EVENT_LIMIT = 500;
 type WalletCoins = Record<ExternalAgent, number>;
 
 export class ExternalAgentWallet {
-  private coins: WalletCoins = { bmo: 0, hermes: 0, claw: 0 };
+  private coins: WalletCoins = { bmo: 0, hermes: 0, argus: 0, claw: 0 };
   private readonly seen = new Set<string>();
 
   constructor(private readonly storage: Pick<Storage, 'getItem' | 'setItem'> | null = safeLocalStorage()) {
@@ -144,7 +150,13 @@ export class ExternalAgentsPanel implements UiComponent {
     const cards = h('div', { class: 'ui-ext__agents' });
     for (const agent of EXTERNAL_AGENT_IDS) {
       const status = h('p', { class: 'ui-ext__status', text: tr('Sem evento confirmado') });
-      const card = h('article', { class: 'ui-ext__card' }, h('h3', { text: externalAgentName(agent) }), status);
+      const card = h(
+        'article',
+        { class: `ui-ext__card ui-ext__card--${agent}` },
+        h('h3', { text: externalAgentName(agent) }),
+        h('p', { class: 'ui-ext__role', text: ROLE_LABELS[agent]() }),
+        status,
+      );
       cards.append(card);
       this.statuses.set(agent, status);
       this.cards.set(agent, card);

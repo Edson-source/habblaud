@@ -246,6 +246,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
     world.setExternalAgentWallet?.({
       bmo: externalWallet.balance('bmo'),
       hermes: externalWallet.balance('hermes'),
+      argus: externalWallet.balance('argus'),
       claw: externalWallet.balance('claw'),
     });
   };

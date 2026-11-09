@@ -54,7 +54,7 @@ function buildingWithHomeLab() {
 describe('presença dos agentes externos', () => {
   it('não presume que agentes sem eventos estejam ociosos', () => {
     expect(deriveExternalAgentPresence([]).map((presence) => presence.status)).toEqual(['unknown', 'unknown', 'unknown']);
-    expect(deriveExternalAgentPresence([]).map((presence) => presence.agent)).toEqual(['bmo', 'hermes', 'claw']);
+    expect(deriveExternalAgentPresence([]).map((presence) => presence.agent)).toEqual(['bmo', 'hermes', 'argus', 'claw']);
     expect(hasConfirmedExternalAgentPresence([])).toBe(false);
     expect(hasConfirmedExternalAgentPresence([received])).toBe(true);
   });

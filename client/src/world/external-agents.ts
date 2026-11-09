@@ -18,8 +18,13 @@ export const EXTERNAL_IDLE_WANDER_MS = 5 * 60_000;
 export const EXTERNAL_IDLE_LOUNGE_MS = 10 * 60_000;
 export const EXTERNAL_TASK_REWARD_COINS = 10;
 export const EXTERNAL_TERMINAL_INDICATOR_MS = 4_000;
-export const EXTERNAL_AGENT_IDS: readonly ExternalAgent[] = ['bmo', 'hermes', 'claw'];
-export const EXTERNAL_AGENT_SEEDS: Readonly<Record<ExternalAgent, number>> = { bmo: 70_501, hermes: 481_627, claw: 8_460 };
+export const EXTERNAL_AGENT_IDS: readonly ExternalAgent[] = ['bmo', 'hermes', 'argus', 'claw'];
+export const EXTERNAL_AGENT_SEEDS: Readonly<Record<ExternalAgent, number>> = {
+  bmo: 70_501,
+  hermes: 481_627,
+  argus: 942_031,
+  claw: 8_460,
+};
 export const EXTERNAL_AGENT_APPEARANCE: Readonly<Partial<Record<ExternalAgent, { look: 'm'; parts: AppearanceParts }>>> = {
   bmo: {
     look: 'm',
@@ -31,6 +36,20 @@ export const EXTERNAL_AGENT_APPEARANCE: Readonly<Partial<Record<ExternalAgent, {
       topAccent: '#e2604f',
       topStyle: 'jacket',
       accessory: 'none',
+      facialHair: 'none',
+    },
+  },
+  argus: {
+    look: 'm',
+    parts: {
+      skin: '#9a6444',
+      hair: '#d8e0e8',
+      hairStyle: 'short',
+      top: '#26384a',
+      topAccent: '#36a59a',
+      topStyle: 'jacket',
+      accessory: 'glasses',
+      accessoryColor: '#22313f',
       facialHair: 'none',
     },
   },
@@ -151,6 +170,7 @@ export interface ExternalIdleActivity {
 export interface ExternalAgentWalletSnapshot {
   bmo: number;
   hermes: number;
+  argus: number;
   claw: number;
 }
 
@@ -238,26 +258,30 @@ export function externalAgentCardDetails(
   };
 }
 
-const LABELS: Record<ExternalAgent, string> = { bmo: 'BMO', hermes: 'Hermes', claw: 'Claw' };
+const LABELS: Record<ExternalAgent, string> = { bmo: 'BMO', hermes: 'Hermes', argus: 'Argus', claw: 'Claw' };
 const SEEDS = EXTERNAL_AGENT_SEEDS;
 const HOME: Record<ExternalAgent, readonly [number, number]> = {
   bmo: [6, 8],
   hermes: [22, 23],
+  argus: [18, 8],
   claw: [27, 7],
 };
 const WORK: Record<ExternalAgent, readonly [number, number]> = {
   bmo: [6, 8],
   hermes: [22, 23],
+  argus: [18, 8],
   claw: [27, 7],
 };
 const WORK_CYCLE: Record<ExternalAgent, readonly (readonly [number, number])[]> = {
   bmo: [[8, 14], [12, 14]],
   hermes: [[22, 14], [25, 14]],
+  argus: [[18, 14], [20, 14]],
   claw: [[12, 14], [22, 14], [25, 14]],
 };
 const WANDER_CYCLE: Record<ExternalAgent, readonly (readonly [number, number])[]> = {
   bmo: [[6, 8], [7, 5], [2, 8]],
   hermes: [[22, 23], [25, 23], [27, 19]],
+  argus: [[18, 8], [16, 10], [20, 10]],
   claw: [[27, 7], [29, 8], [22, 10]],
 };
 const WORK_SPOT_KINDS: readonly SpotDef['kind'][] = ['desk', 'cafe_seat', 'sofa', 'armchair', 'beanbag'];
@@ -513,7 +537,7 @@ export class ExternalAgentCharacters {
   private readonly finder: PathFinder;
   private grid: WalkGrid;
   private workAreaId = HOMELAB_ROOM_ID;
-  private wallet: ExternalAgentWalletSnapshot = { bmo: 0, hermes: 0, claw: 0 };
+  private wallet: ExternalAgentWalletSnapshot = { bmo: 0, hermes: 0, argus: 0, claw: 0 };
   private activitySequence = 0;
 
   constructor(private readonly art: Pick<ArtModule, 'appearanceFromSeed'>, grid: WalkGrid) {
@@ -604,6 +628,7 @@ export class ExternalAgentCharacters {
     this.wallet = {
       bmo: Math.max(0, Number.isFinite(wallet.bmo) ? wallet.bmo : 0),
       hermes: Math.max(0, Number.isFinite(wallet.hermes) ? wallet.hermes : 0),
+      argus: Math.max(0, Number.isFinite(wallet.argus) ? wallet.argus : 0),
       claw: Math.max(0, Number.isFinite(wallet.claw) ? wallet.claw : 0),
     };
   }

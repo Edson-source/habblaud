@@ -979,6 +979,12 @@ const EXTERNAL_SOCIAL: Record<ExternalAgent, {
     friends: ['bmo'],
     rivals: ['claw'],
   },
+  argus: {
+    hobbies: [{ emoji: '🛰️', label: () => tr('Monitoramento') }, { emoji: '🗂️', label: () => tr('Auditoria') }],
+    catchphrase: () => tr('Vigiando os sistemas.'),
+    friends: ['bmo', 'claw'],
+    rivals: [],
+  },
   claw: {
     hobbies: [{ emoji: '☕', label: () => tr('Café') }, { emoji: '♟️', label: () => tr('Estratégia') }],
     catchphrase: () => tr('Pinça à obra!'),
