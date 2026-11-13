@@ -11,7 +11,7 @@ export const AGENT_EVENT_TYPES = [
   'response_delivery_failed',
 ] as const;
 
-export const EXTERNAL_AGENTS = ['bmo', 'hermes', 'argus', 'claw'] as const;
+export const EXTERNAL_AGENTS = ['bmo', 'hermes', 'argus', 'claw', 'dev'] as const;
 export const AGENT_EVENT_SOURCES = ['terminal', 'discord', 'esp'] as const;
 
 export type AgentEventType = (typeof AGENT_EVENT_TYPES)[number];

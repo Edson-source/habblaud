@@ -308,6 +308,10 @@ export const FR: Readonly<Record<string, string>> = {
 
   // client/src/ui/external-agents.ts
   "Agentes integrados": "Agents intégrés",
+  "Desenvolvimento de software": "Développement logiciel",
+  "Programação": "Programmation",
+  "Testes automatizados": "Tests automatisés",
+  "Código revisado, tarefa entregue.": "Code vérifié, tâche livrée.",
   "Fechar agentes integrados": "Fermer les agents intégrés",
   "Mapa visual dos agentes": "Carte visuelle des agents",
   "Estado desconhecido": "État inconnu",

@@ -17,7 +17,9 @@ describe('agent events contract v1', () => {
     const events: AgentEvent[] = [
       base,
       { ...base, type: 'route_decided', target_agent: 'hermes' },
+      { ...base, type: 'route_decided', target_agent: 'dev' },
       { ...base, type: 'agent_started', agent: 'hermes' },
+      { ...base, type: 'agent_started', agent: 'dev' },
       { ...base, type: 'agent_waiting_shell', agent: 'hermes', summary: 'Aguardando shell de pesquisa.' },
       { ...base, type: 'agent_needs_help', agent: 'claw', summary: 'Preciso de ajuda para continuar.' },
       { ...base, type: 'agent_completed', agent: 'hermes' },

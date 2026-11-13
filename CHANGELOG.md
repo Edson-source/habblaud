@@ -12,9 +12,9 @@ do meio (0.**3**.0).
 
 ### Habblaud
 
-- **Agentes externos BMO, Hermes, Argus e Claw:** painel separado exibe estados e eventos confirmados via SSE, sem criar
-  sessões fictícias no escritório. A lista lateral e os contadores visuais incluem os quatro; o total de trabalhando só
-  soma execuções confirmadas. Os personagens se movimentam por caminhos caminháveis, viram para a câmera ao parar
+- **Agentes externos BMO, Hermes, Argus, Claw e Dev:** painel separado exibe estados e eventos confirmados via SSE, sem
+  criar sessões fictícias no escritório. A lista lateral e os contadores visuais incluem os cinco; o total de trabalhando
+  só soma execuções confirmadas. Os personagens se movimentam por caminhos caminháveis, viram para a câmera ao parar
   e mostram balões baseados nos resumos de eventos confirmados. O deslocamento continua sendo apenas visual; após
   uma conclusão, fazem um passeio depois de 5 minutos e vão ao lounge após 10. Como os personagens integrados são
   mostrados mesmo antes do primeiro evento, o aviso de escritório vazio não cobre mais o mapa; a demonstração continua

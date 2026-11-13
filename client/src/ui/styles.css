@@ -2895,19 +2895,23 @@
 }
 
 .ui-ext__actor[data-agent='bmo'] {
-  left: 17%;
+  left: 10%;
 }
 
 .ui-ext__actor[data-agent='hermes'] {
-  left: 39%;
+  left: 30%;
 }
 
 .ui-ext__actor[data-agent='argus'] {
-  left: 61%;
+  left: 50%;
 }
 
 .ui-ext__actor[data-agent='claw'] {
-  left: 83%;
+  left: 70%;
+}
+
+.ui-ext__actor[data-agent='dev'] {
+  left: 90%;
 }
 
 .ui-ext__avatar {
@@ -2963,52 +2967,68 @@
   animation: ui-ext-wander-claw 39s ease-in-out infinite;
 }
 
+.ui-ext__actor.is-wandering[data-agent='dev'] {
+  animation: ui-ext-wander-dev 41s ease-in-out infinite;
+}
+
 .ui-ext__actor.is-lounging[data-agent='bmo'] {
-  left: 81%;
-  top: 40%;
+  left: 78%;
+  top: 37%;
 }
 
 .ui-ext__actor.is-lounging[data-agent='hermes'] {
   left: 87%;
-  top: 57%;
+  top: 52%;
 }
 
 .ui-ext__actor.is-lounging[data-agent='argus'] {
-  left: 84%;
-  top: 40%;
+  left: 78%;
+  top: 67%;
 }
 
 .ui-ext__actor.is-lounging[data-agent='claw'] {
   left: 88%;
-  top: 75%;
+  top: 82%;
+}
+
+.ui-ext__actor.is-lounging[data-agent='dev'] {
+  left: 89%;
+  top: 34%;
 }
 
 @keyframes ui-ext-wander-bmo {
-  0%, 100% { left: 17%; top: 56%; }
+  0%, 100% { left: 10%; top: 56%; }
   28% { left: 58%; top: 34%; }
   58% { left: 47%; top: 78%; }
   82% { left: 24%; top: 39%; }
 }
 
 @keyframes ui-ext-wander-hermes {
-  0%, 100% { left: 39%; top: 56%; }
+  0%, 100% { left: 30%; top: 56%; }
   25% { left: 15%; top: 75%; }
   52% { left: 62%; top: 68%; }
   78% { left: 52%; top: 34%; }
 }
 
 @keyframes ui-ext-wander-argus {
-  0%, 100% { left: 61%; top: 56%; }
+  0%, 100% { left: 50%; top: 56%; }
   25% { left: 48%; top: 34%; }
   52% { left: 67%; top: 75%; }
   78% { left: 36%; top: 62%; }
 }
 
 @keyframes ui-ext-wander-claw {
-  0%, 100% { left: 83%; top: 56%; }
+  0%, 100% { left: 70%; top: 56%; }
   26% { left: 25%; top: 34%; }
   54% { left: 14%; top: 65%; }
   79% { left: 74%; top: 77%; }
+}
+
+@keyframes ui-ext-wander-dev {
+  0%, 100% { left: 90%; top: 56%; }
+  24% { left: 52%; top: 34%; }
+  51% { left: 77%; top: 77%; }
+  79% { left: 58%; top: 43%; }
 }
 
 .ui-ext__agents {
@@ -3040,6 +3060,10 @@
 
 .ui-ext__card--argus {
   border-color: rgba(54, 165, 154, 0.45);
+}
+
+.ui-ext__card--dev {
+  border-color: rgba(20, 184, 166, 0.45);
 }
 
 .ui-ext__status {

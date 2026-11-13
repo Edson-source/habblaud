@@ -991,6 +991,12 @@ const EXTERNAL_SOCIAL: Record<ExternalAgent, {
     friends: ['hermes'],
     rivals: ['bmo'],
   },
+  dev: {
+    hobbies: [{ emoji: '💻', label: () => tr('Programação') }, { emoji: '🧪', label: () => tr('Testes automatizados') }],
+    catchphrase: () => tr('Código revisado, tarefa entregue.'),
+    friends: ['bmo', 'argus'],
+    rivals: [],
+  },
 };
 const EXTERNAL_SOURCES: Record<AgentEvent['source'], () => string> = {
   terminal: () => tr('Terminal'),

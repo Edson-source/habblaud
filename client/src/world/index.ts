@@ -63,7 +63,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   /** Timelapse ligado: relógio próprio do mundo (`worldNow`), acelerado pelo fator de animação. */
   let playback: WorldPlayback | null = null;
   let externalAgentPresence: readonly ExternalAgentPresence[] = [];
-  let externalAgentWallet: ExternalAgentWalletSnapshot = { bmo: 0, hermes: 0, argus: 0, claw: 0 };
+  let externalAgentWallet: ExternalAgentWalletSnapshot = { bmo: 0, hermes: 0, argus: 0, claw: 0, dev: 0 };
   let worldNow = 0;
   const selectCbs = new Set<(s: Selection) => void>();
   const hoverCbs = new Set<(id: string | null) => void>();

@@ -15,12 +15,13 @@ import { formatClock } from './format';
 import { ICONS } from './icons';
 import { tr } from '../../../shared/i18n';
 
-const AVATARS: Record<ExternalAgent, string> = { bmo: '🤖', hermes: '📚', argus: '🛡️', claw: '🦀' };
+const AVATARS: Record<ExternalAgent, string> = { bmo: '🤖', hermes: '📚', argus: '🛡️', claw: '🦀', dev: '🧑‍💻' };
 const ROLE_LABELS: Record<ExternalAgent, () => string> = {
   bmo: () => tr('Orquestração'),
   hermes: () => tr('Conhecimento e pesquisa'),
   argus: () => tr('Monitoramento somente de leitura'),
   claw: () => tr('Execução de ações autorizadas'),
+  dev: () => tr('Desenvolvimento de software'),
 };
 const STATUS_LABELS: Record<ExternalAgentStatus, () => string> = {
   unknown: () => tr('Sem evento confirmado'),
@@ -60,7 +61,7 @@ const WALLET_EVENT_LIMIT = 500;
 type WalletCoins = Record<ExternalAgent, number>;
 
 export class ExternalAgentWallet {
-  private coins: WalletCoins = { bmo: 0, hermes: 0, argus: 0, claw: 0 };
+  private coins: WalletCoins = { bmo: 0, hermes: 0, argus: 0, claw: 0, dev: 0 };
   private readonly seen = new Set<string>();
 
   constructor(private readonly storage: Pick<Storage, 'getItem' | 'setItem'> | null = safeLocalStorage()) {

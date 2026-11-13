@@ -248,6 +248,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
       hermes: externalWallet.balance('hermes'),
       argus: externalWallet.balance('argus'),
       claw: externalWallet.balance('claw'),
+      dev: externalWallet.balance('dev'),
     });
   };
   syncExternalAgents();

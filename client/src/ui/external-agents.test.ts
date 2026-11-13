@@ -53,8 +53,8 @@ function buildingWithHomeLab() {
 
 describe('presença dos agentes externos', () => {
   it('não presume que agentes sem eventos estejam ociosos', () => {
-    expect(deriveExternalAgentPresence([]).map((presence) => presence.status)).toEqual(['unknown', 'unknown', 'unknown']);
-    expect(deriveExternalAgentPresence([]).map((presence) => presence.agent)).toEqual(['bmo', 'hermes', 'argus', 'claw']);
+    expect(deriveExternalAgentPresence([]).map((presence) => presence.status)).toEqual(['unknown', 'unknown', 'unknown', 'unknown', 'unknown']);
+    expect(deriveExternalAgentPresence([]).map((presence) => presence.agent)).toEqual(['bmo', 'hermes', 'argus', 'claw', 'dev']);
     expect(hasConfirmedExternalAgentPresence([])).toBe(false);
     expect(hasConfirmedExternalAgentPresence([received])).toBe(true);
   });
@@ -86,7 +86,10 @@ describe('presença dos agentes externos', () => {
     wallet.sync([completion]);
     wallet.sync([completion]);
     expect(wallet.balance('hermes')).toBe(10);
+    wallet.sync([event('agent_completed', 'dev', 2)]);
+    expect(wallet.balance('dev')).toBe(10);
     expect(new ExternalAgentWallet(storage).balance('hermes')).toBe(10);
+    expect(new ExternalAgentWallet(storage).balance('dev')).toBe(10);
   });
 
   it('separa roteamento confirmado de início real de execução', () => {
@@ -191,7 +194,7 @@ describe('presença dos agentes externos', () => {
     expect(externalIdleVisual(claw, Date.parse(failed.occurred_at) + EXTERNAL_IDLE_LOUNGE_MS)).toBe('stationary');
   });
 
-  it('encaminha os três personagens externos pelo prédio sem adicioná-los à simulação', () => {
+  it('encaminha os cinco personagens externos pelo prédio sem adicioná-los à simulação', () => {
     const characters = new ExternalAgentCharacters(art, buildingWithHomeLab().grid);
     expect(characters.characters.find((character) => character.agent === 'bmo')?.appearance).toMatchObject({
       skin: '#9a6444',
@@ -204,12 +207,19 @@ describe('presença dos agentes externos', () => {
       topAccent: '#c0392b',
       topStyle: 'shirt_tie',
     });
+    expect(characters.characters.find((character) => character.agent === 'dev')?.appearance).toMatchObject({
+      top: '#256d85',
+      topAccent: '#39c5bb',
+      accessory: 'glasses',
+    });
     expect(EXTERNAL_AGENT_APPEARANCE.bmo?.parts.hairStyle).toBe('short');
     expect(EXTERNAL_AGENT_APPEARANCE.claw?.parts.hairStyle).toBe('short');
     characters.setPresence(deriveExternalAgentPresence([
       event('agent_started', 'bmo', 1),
       event('agent_started', 'hermes', 2),
       event('agent_started', 'claw', 3),
+      event('agent_started', 'argus', 4),
+      event('agent_started', 'dev', 5),
     ]));
     for (let frame = 0; frame < 1_000; frame++) {
       characters.update(1 / 30, Date.parse(received.occurred_at));
@@ -229,9 +239,11 @@ describe('presença dos agentes externos', () => {
       event('agent_started', 'bmo', 1),
       event('agent_started', 'hermes', 2),
       event('agent_started', 'claw', 3),
+      event('agent_started', 'argus', 4),
+      event('agent_started', 'dev', 5),
     ]));
     for (let frame = 0; frame < 1_000; frame++) characters.update(1 / 30, Date.parse(received.occurred_at), 'normal', spots);
-    expect(new Set(characters.characters.map((character) => character.workSpotId)).size).toBe(3);
+    expect(new Set(characters.characters.map((character) => character.workSpotId)).size).toBe(5);
     for (const character of characters.characters) {
       expect(character.workSpotId).not.toBe('');
       expect(spots.find((spot) => spot.id === character.workSpotId)?.areaId).toBe(HOMELAB_ROOM_ID);
